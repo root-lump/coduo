@@ -1,0 +1,5 @@
+# 実行ツールチェーンの固定。
+# pnpm の呼び出しは `mise exec -- pnpm ...` を使う（node と pnpm の両方が要る）。
+[tools]
+node = "26.5.0"
+pnpm = "11.19.0"
