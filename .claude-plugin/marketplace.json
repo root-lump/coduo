@@ -1,0 +1,13 @@
+{
+  "name": "coduo",
+  "owner": {
+    "name": "root-lump"
+  },
+  "plugins": [
+    {
+      "name": "coduo",
+      "source": ".",
+      "description": "GitHub リポジトリ/PR やローカルディレクトリから、コードビューア + Code Tour 付きの Claude Artifact を生成するスキル"
+    }
+  ]
+}

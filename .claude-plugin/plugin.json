@@ -1,0 +1,7 @@
+{
+  "name": "coduo",
+  "description": "GitHub リポジトリ/PR やローカルディレクトリから、コードビューア + Code Tour 付きの Claude Artifact を生成するスキル",
+  "author": {
+    "name": "root-lump"
+  }
+}
