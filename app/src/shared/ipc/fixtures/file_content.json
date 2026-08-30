@@ -1,0 +1,6 @@
+{
+  "path": "src/lib.rs",
+  "content": "pub fn answer() -> u32 {\n    42\n}\n",
+  "language": "rust",
+  "lineCount": 3
+}

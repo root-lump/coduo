@@ -1,0 +1,218 @@
+/* workspace module: 変更パネルとファイルツリー。 */
+.changes-panel {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: #0b0e14;
+  overflow: hidden;
+}
+
+.panel-section {
+  min-height: 0;
+}
+
+.changes-section {
+  flex: 0 1 auto;
+  max-height: 45%;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-soft);
+  overflow: auto;
+}
+
+.files-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 45px;
+  padding: 0 15px 0 18px;
+  color: #818a9b;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.count-badge {
+  min-width: 22px;
+  padding: 2px 6px;
+  border-radius: 1249px;
+  background: #252a36;
+  color: #9aa2b2;
+  font-size: var(--fs-micro);
+  line-height: 18px;
+  text-align: center;
+}
+
+.count-label {
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+.change-list {
+  padding: 0 9px;
+}
+
+.change-row {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) 19px 15px;
+  align-items: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #abb2c0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.change-row:hover:not(:disabled) {
+  background: #161a23;
+}
+.change-row.is-active {
+  background: #211e36;
+  color: #e2dff8;
+}
+.change-row:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.change-file-icon,
+.file-icon {
+  color: #718295;
+  font-family: ui-monospace, monospace;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  letter-spacing: -0.16em;
+}
+
+.change-file-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.change-file-name,
+.change-file-directory {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.change-file-name {
+  font-size: var(--fs-body);
+  font-weight: 520;
+}
+.change-file-directory {
+  color: #535c6b;
+  font-size: var(--fs-caption);
+}
+
+.status-letter {
+  font-family: ui-monospace, monospace;
+  font-size: var(--fs-caption);
+  font-weight: 750;
+}
+
+.status-added,
+.status-untracked {
+  color: var(--green);
+}
+.status-modified,
+.status-renamed {
+  color: var(--amber);
+}
+.status-deleted,
+.status-conflicted {
+  color: var(--red);
+}
+
+.change-state-dot {
+  color: #586170;
+  font-size: var(--fs-micro);
+  text-align: right;
+}
+
+.panel-empty {
+  margin: 10px 16px;
+  color: var(--text-faint);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+
+.file-tree {
+  flex: 1;
+  padding: 0 9px 18px;
+  overflow: auto;
+}
+
+.file-tree-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.file-tree-list .file-tree-list {
+  padding-left: 18px;
+}
+.tree-folder .disclosure {
+  transform: rotate(0deg);
+}
+.tree-folder[aria-expanded="true"] .disclosure {
+  transform: rotate(90deg);
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8e97a7;
+  font-size: var(--fs-body);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  list-style: none;
+}
+
+.tree-row:hover {
+  background: #151923;
+  color: #bdc3cf;
+}
+.tree-row.is-active {
+  background: #211e36;
+  color: #ddd9f8;
+}
+
+.tree-folder {
+  color: #8d95a4;
+}
+.tree-folder .folder-icon {
+  width: 14px;
+  height: 10px;
+  border-color: #596474;
+}
+.tree-folder .folder-icon::before {
+  border-color: #596474;
+}
+.disclosure {
+  width: 8px;
+  color: #505968;
+  font-size: var(--fs-glyph);
+  transition: transform 120ms ease;
+}

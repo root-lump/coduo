@@ -1,0 +1,444 @@
+/* viewer module: コードビューア・Monaco 装飾・コード注釈レール。 */
+.viewer-panel {
+  display: grid;
+  grid-template-rows: 41px minmax(0, 1fr);
+  background: #0d1017;
+}
+
+.viewer-header {
+  /* ファイルパスと状態表示はコードより控えめでよいので、この帯だけ一段縮める。
+     高さはグリッド行が決めるため、ここでは中身の縮尺だけを指定する。 */
+  zoom: 0.9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  min-width: 0;
+  padding: 0 15px 0 19px;
+  border-bottom: 1px solid var(--border-soft);
+  background: #0e1118;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  color: #666f7f;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: var(--fs-body);
+  white-space: nowrap;
+}
+
+.breadcrumb-root {
+  color: #606979;
+}
+.breadcrumb-part {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.breadcrumb-separator {
+  margin: 0 6px;
+  color: #343a45;
+  font-size: var(--fs-glyph);
+}
+.breadcrumb-part span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.breadcrumb-part .current {
+  color: #b5bdca;
+}
+
+.viewer-header-meta {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 9px;
+  color: #616a79;
+  font-size: var(--fs-caption);
+}
+
+.changed-file-pill,
+.read-only-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #151923;
+}
+
+.changed-file-pill span {
+  color: var(--amber);
+  font-size: var(--fs-micro);
+}
+.read-only-pill span {
+  color: #7d8595;
+}
+
+.viewer-body {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.code-viewer {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 100%;
+}
+
+.viewer-placeholder,
+.viewer-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  gap: 10px;
+  color: var(--text-faint);
+  font-size: var(--fs-body);
+}
+
+.viewer-placeholder strong {
+  color: #8d95a5;
+  font-size: var(--fs-title);
+  font-weight: 550;
+}
+.placeholder-glyph {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid #282e39;
+  border-radius: 11px;
+  color: #656e7e;
+}
+
+.viewer-busy-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  width: 35%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: loading-line 1s ease-in-out infinite;
+}
+
+@keyframes loading-line {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(390%);
+  }
+}
+
+.monaco-editor .agent-focus-line {
+  background: linear-gradient(
+    90deg,
+    #8b7cf62b 0%,
+    #8b7cf619 58%,
+    #8b7cf60b 82%,
+    transparent 100%
+  ) !important;
+  box-shadow:
+    inset 3px 0 #9889ff,
+    inset 0 1px #b0a5ff0b,
+    inset 0 -1px #b0a5ff0b;
+}
+
+.monaco-editor .agent-focus-gutter {
+  width: 4px !important;
+  margin-left: 5px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 9px #8b7cf688;
+}
+
+.code-editor-surface {
+  position: absolute;
+  inset: 0;
+}
+.code-viewer.has-code-annotations .code-editor-surface {
+  right: 358px;
+}
+
+.monaco-editor .code-annotation-range {
+  border-bottom: 1px solid color-mix(in srgb, currentColor 62%, transparent);
+  border-radius: 4px;
+  opacity: 0.58;
+}
+
+.monaco-editor .code-annotation-range.is-selected {
+  box-shadow:
+    inset 0 -2px currentColor,
+    0 0 12px color-mix(in srgb, currentColor 22%, transparent);
+  opacity: 1;
+}
+
+.annotation-color-1 {
+  --annotation-color: #a99cff;
+  color: var(--annotation-color);
+}
+.annotation-color-2 {
+  --annotation-color: #50d8c3;
+  color: var(--annotation-color);
+}
+.annotation-color-3 {
+  --annotation-color: #f1a66e;
+  color: var(--annotation-color);
+}
+.annotation-color-4 {
+  --annotation-color: #ed83ba;
+  color: var(--annotation-color);
+}
+.monaco-editor .code-annotation-range.annotation-color-1 {
+  background: #8b7cf622;
+}
+.monaco-editor .code-annotation-range.annotation-color-2 {
+  background: #3cc8b41d;
+}
+.monaco-editor .code-annotation-range.annotation-color-3 {
+  background: #ed9b5f1d;
+}
+.monaco-editor .code-annotation-range.annotation-color-4 {
+  background: #df6fa81d;
+}
+
+.code-annotation-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 28;
+  pointer-events: none;
+}
+
+.code-annotation-connectors {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.annotation-connector {
+  fill: none;
+  stroke: var(--annotation-color);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.28;
+  vector-effect: non-scaling-stroke;
+}
+
+.annotation-connector.is-selected {
+  stroke-width: 1.8;
+  stroke-dasharray: none;
+  opacity: 0.86;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+.code-annotation-rail {
+  position: absolute;
+  top: 0;
+  right: 15px;
+  bottom: 0;
+  width: 335px;
+  border-left: 1px solid #34394a80;
+  background: linear-gradient(90deg, transparent, #0b0e16e8 12%, #0b0e16f5);
+  pointer-events: none;
+}
+/* 注釈が縦に収まらないときだけレール自体をスクロールさせる */
+.code-annotation-rail.is-scrollable {
+  overflow-y: auto;
+  pointer-events: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #3b4152 transparent;
+}
+.code-annotation-rail-content {
+  position: relative;
+}
+
+.code-annotation-card {
+  position: absolute;
+  right: 0;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 18px;
+  gap: 10px;
+  width: 320px;
+  min-height: 115px;
+  max-height: 128px;
+  padding: 12px 10px 12px 12px;
+  border: 1px solid #343a4a;
+  border-left: 2px solid var(--annotation-color);
+  border-radius: 11px;
+  background: linear-gradient(145deg, #171b26f2, #10141df2);
+  box-shadow:
+    0 8px 24px #0007,
+    inset 0 1px #ffffff09;
+  color: #8c94a4;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  pointer-events: auto;
+  transition:
+    border-color 140ms ease,
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.code-annotation-card:hover,
+.code-annotation-card:focus-visible {
+  border-color: var(--annotation-color);
+  outline: none;
+  transform: translateX(-4px);
+}
+
+.code-annotation-card.is-selected {
+  z-index: 2;
+  max-height: 330px;
+  border-color: color-mix(in srgb, var(--annotation-color) 72%, #454b5c);
+  background: linear-gradient(145deg, #202438fa, #131824fa);
+  box-shadow:
+    0 12px 34px #0009,
+    0 0 20px color-mix(in srgb, var(--annotation-color) 12%, transparent);
+  color: #c6cad4;
+}
+/* 選択中は説明を切り詰めず、長い場合はカード内でスクロールさせる */
+.code-annotation-card.is-selected .code-annotation-copy > span {
+  display: block;
+  max-height: 265px;
+  overflow-y: auto;
+  font-size: var(--fs-body);
+  scrollbar-width: thin;
+  scrollbar-color: #3b4152 transparent;
+}
+
+.code-annotation-card.is-offscreen {
+  opacity: 0.58;
+}
+
+.code-annotation-number {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--annotation-color);
+  border-radius: 50%;
+  color: var(--annotation-color);
+  font-size: var(--fs-caption);
+  font-weight: 750;
+}
+
+.code-annotation-card.is-selected .code-annotation-number {
+  background: var(--annotation-color);
+  color: #0d1119;
+}
+
+.code-annotation-copy {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.code-annotation-copy strong {
+  overflow: hidden;
+  color: #e3e5eb;
+  font-size: var(--fs-body);
+  font-weight: 680;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-annotation-copy > span {
+  display: -webkit-box;
+  color: #959cab;
+  font-size: var(--fs-caption);
+  line-height: 1.55;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.code-annotation-offscreen {
+  color: currentColor;
+  font-size: var(--fs-caption);
+}
+
+.code-annotation-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 1px solid #333948;
+  border-radius: 6px;
+  background: #11151ed9;
+  color: #727b8b;
+  font-size: var(--fs-title);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.code-annotation-close:hover {
+  border-color: #7066b2;
+  color: #d4d1eb;
+}
+
+@media (max-width: 1225px) {
+  .code-annotation-rail {
+    width: 270px;
+  }
+  .code-annotation-card {
+    width: 255px;
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  .code-annotation-offscreen {
+    display: none;
+  }
+  .code-annotation-copy > span {
+    -webkit-line-clamp: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-annotation-card {
+    transition: none;
+  }
+}
+
+.monaco-editor .git-line-added {
+  background: #3fb9500b;
+}
+.monaco-editor .git-line-modified {
+  background: #d2992209;
+}
+.monaco-editor .git-line-deleted {
+  background: #ef6a7109;
+}
+
+.monaco-editor .git-gutter-added,
+.monaco-editor .git-gutter-modified,
+.monaco-editor .git-gutter-deleted {
+  width: 2px !important;
+  margin-left: 1px;
+}
+
+.monaco-editor .git-gutter-added {
+  background: var(--green);
+}
+.monaco-editor .git-gutter-modified {
+  background: var(--amber);
+}
+.monaco-editor .git-gutter-deleted {
+  background: var(--red);
+}

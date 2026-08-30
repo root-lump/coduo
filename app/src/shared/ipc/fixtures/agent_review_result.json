@@ -1,0 +1,72 @@
+{
+  "agent": "claude",
+  "tour": {
+    "title": "デモリポジトリのレビュー",
+    "summary": "エントリポイントから中核ロジックまでを辿ります。",
+    "steps": [
+      {
+        "id": "step-1",
+        "title": "エントリポイント",
+        "explanation": "lib.rs が公開APIの入口です。",
+        "target": {
+          "file": "src/lib.rs",
+          "range": {
+            "startLine": 1,
+            "endLine": 3
+          }
+        },
+        "relation": null,
+        "annotations": [
+          {
+            "id": "step-1-annotation-1",
+            "label": "公開関数",
+            "explanation": "この関数だけが外部から呼ばれます。",
+            "target": {
+              "file": "src/lib.rs",
+              "range": {
+                "startLine": 1,
+                "startColumn": 8,
+                "endLine": 1,
+                "endColumn": 17
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "step-2",
+        "title": "呼び出し関係",
+        "explanation": "answer は main から呼ばれます。",
+        "target": {
+          "file": "src/lib.rs",
+          "range": {
+            "startLine": 1,
+            "endLine": 3
+          }
+        },
+        "relation": "definition",
+        "annotations": []
+      },
+      {
+        "id": "step-3",
+        "title": "全体のまとめ",
+        "explanation": "読み進める順序のまとめです。",
+        "target": null,
+        "relation": null,
+        "annotations": []
+      }
+    ]
+  },
+  "warnings": ["step-2 にコード注釈を付け直せませんでした。"],
+  "usage": {
+    "inputTokens": 1200,
+    "cachedInputTokens": 800,
+    "outputTokens": 350,
+    "reasoningOutputTokens": 120,
+    "totalCostUsd": 0.042
+  },
+  "debug": {
+    "prompt": "リポジトリを説明してください",
+    "response": "{\"title\":\"デモリポジトリのレビュー\"}"
+  }
+}

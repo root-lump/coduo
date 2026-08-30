@@ -1,0 +1,28 @@
+// review module の公開 API。他 module はここ経由でのみ参照する。
+export type {
+  AgentKind,
+  AgentReviewError,
+  AgentReviewResult,
+  AgentUsage,
+  CodeAnnotation,
+  CodeRange,
+  CodeTarget,
+  JumpRelation,
+  ResolvedReviewStep,
+  ReviewErrorCode,
+  ReviewMode,
+  ReviewRequest,
+  ReviewStep,
+  ReviewStyle,
+  ReviewStyleKind,
+  ReviewTour,
+} from "./domain";
+export type { ReviewGateway } from "./ports";
+export { useAgentReview } from "./application/useAgentReview";
+export { useReviewController } from "./application/useReviewController";
+export { normalizeAgentReviewError } from "./application/normalizeError";
+export {
+  ExplanationPanel,
+  type ExplanationPanelProps,
+} from "./ui/ExplanationPanel";
+export { ReviewNavigation } from "./ui/ReviewNavigation";

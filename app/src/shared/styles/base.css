@@ -1,0 +1,86 @@
+/* 全体の reset・タイポグラフィ・フォーム基礎。読み込み順の先頭。 */
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  /* 3つのペインで基準がばらつかないよう、文字サイズは1つの尺度から導く。
+     本文11pxを基準に比率1.22で刻み、装飾グリフだけ尺度の外に置く。 */
+  --fs-micro: 9.5px;
+  --fs-caption: 11px;
+  --fs-body: 14px;
+  --fs-title: 17px;
+  --fs-display: 20.5px;
+  --fs-hero: 25px;
+  --fs-glyph: 19px;
+
+  /* 右パネルは要素の種類が多く、尺度どおりだと読みにくい箇所が出るため、
+     役割ごとに指定する。値は尺度から外れてよいが、尺度の段の近くに置く。 */
+  --rf-panel-title: 17.5px;
+  --rf-summary: 14px;
+  --rf-kicker: 12.5px;
+  --rf-step-title: 17.5px;
+  --rf-step-body: 13px;
+  --rf-step-meta: 12px;
+  --rf-outline-title: 14px;
+  --rf-outline-path: 11px;
+  --rf-settings-label: 12.5px;
+  --rf-settings-control: 12.5px;
+  --rf-settings-note: 11px;
+  --rf-agent-title: 14px;
+  --rf-agent-detail: 10px;
+  --rf-debug: 11px;
+  --bg: #090b10;
+  --surface: #0d1017;
+  --surface-raised: #121620;
+  --surface-hover: #171c27;
+  --border: #202530;
+  --border-soft: #191e28;
+  --text: #d9dde7;
+  --text-bright: #f3f4f7;
+  --text-muted: #7e8798;
+  --text-faint: #555e6e;
+  --accent: #8b7cf6;
+  --accent-bright: #a99cf7;
+  --accent-soft: #8b7cf61a;
+  --green: #53c878;
+  --amber: #e2ae57;
+  --red: #ef6a71;
+  --cyan: #61c6d7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 75%, white);
+  outline-offset: -2px;
+}

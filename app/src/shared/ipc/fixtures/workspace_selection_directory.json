@@ -1,0 +1,49 @@
+{
+  "snapshot": {
+    "root": "/Users/example/demo-repo",
+    "name": "demo-repo",
+    "selectionKind": "directory",
+    "branch": "main",
+    "isGitRepository": true,
+    "files": [
+      {
+        "path": "src/lib.rs",
+        "name": "lib.rs",
+        "extension": "rs",
+        "size": 420,
+        "readability": "readable"
+      },
+      {
+        "path": "assets/logo.png",
+        "name": "logo.png",
+        "extension": "png",
+        "size": 10240,
+        "readability": "binary"
+      },
+      {
+        "path": "logs/huge.log",
+        "name": "huge.log",
+        "extension": null,
+        "size": 3000000,
+        "readability": "too-large"
+      }
+    ],
+    "changes": [
+      {
+        "path": "src/lib.rs",
+        "status": "modified",
+        "staged": true,
+        "unstaged": false,
+        "changedLines": []
+      },
+      {
+        "path": "docs/new.md",
+        "status": "untracked",
+        "staged": false,
+        "unstaged": true,
+        "changedLines": []
+      }
+    ]
+  },
+  "initialFile": null
+}

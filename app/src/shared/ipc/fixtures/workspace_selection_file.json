@@ -1,0 +1,25 @@
+{
+  "snapshot": {
+    "root": "/Users/example/notes/memo.md",
+    "name": "memo.md",
+    "selectionKind": "file",
+    "branch": null,
+    "isGitRepository": false,
+    "files": [
+      {
+        "path": "memo.md",
+        "name": "memo.md",
+        "extension": "md",
+        "size": 24,
+        "readability": "readable"
+      }
+    ],
+    "changes": []
+  },
+  "initialFile": {
+    "path": "memo.md",
+    "content": "# メモ\n本文です。\n",
+    "language": "markdown",
+    "lineCount": 2
+  }
+}
