@@ -3,7 +3,7 @@
 //
 //   node scripts/generate-languages.mjs
 //
-// 出力（../skills/create-code-viewer/assets/languages/）:
+// 出力（../skills/create-code-tour/assets/languages/）:
 //   <id>.js        globalThis.coduoExtraLanguages へ push する古典スクリプト。
 //                  viewer は Monaco 初期化時にこのキューを registerLanguage する
 //   manifest.json  builtIn（template 焼き込み済み ID）・言語 ID → 拡張子/ファイル名・
@@ -20,7 +20,7 @@ const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const definitionsDir = join(
   appRoot, "node_modules", "monaco-editor", "esm", "vs", "languages", "definitions",
 );
-const outDir = join(appRoot, "..", "skills", "create-code-viewer", "assets", "languages");
+const outDir = join(appRoot, "..", "skills", "create-code-tour", "assets", "languages");
 const monacoVersion = JSON.parse(
   readFileSync(join(appRoot, "node_modules", "monaco-editor", "package.json"), "utf8"),
 ).version;

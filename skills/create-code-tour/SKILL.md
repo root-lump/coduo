@@ -1,5 +1,5 @@
 ---
-name: create-code-viewer
+name: create-code-tour
 description: GitHub リポジトリ/PR の URL、またはローカルディレクトリから、コードを閲覧・理解するための Claude Artifact（コードビューア + Code Tour）を生成・更新する。「コードビューアを作って」「この PR を解説付きで読めるようにして」「リポジトリを Code Tour にして」「コードを見られる Artifact にして」「Coduo を作って」「ビューアを更新/Refresh して」等、コードの閲覧・解説用ページを求める依頼で起動する。生成物の表示名は常に Coduo — owner/repo@sha（PR は Coduo — owner/repo#N@sha）。
 ---
 
