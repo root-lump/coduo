@@ -12,7 +12,6 @@ export type {
   ReviewMode,
   ReviewRequest,
   ReviewStep,
-  ReviewStyleKind,
   ReviewTour,
 } from "./domain";
 export type { ReviewGateway } from "./ports";

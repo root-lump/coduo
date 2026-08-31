@@ -24,9 +24,6 @@ import type { JumpRelation } from "../../shared/snapshot/JumpRelation";
 /** ユーザーが選ぶ「説明する対象」。ReviewRequest の kind に対応する。 */
 export type ReviewMode = "repository" | "file" | "pull_request";
 
-/** スタイル選択 UI の状態。Tour を書くときに選ぶ説明のスタイルに対応する。 */
-export type ReviewStyleKind = "learning" | "diff" | "custom";
-
 /** ステップの action 列を UI が描画できる形に畳み込んだ結果。 */
 export type ResolvedReviewStep = {
   file?: string;
