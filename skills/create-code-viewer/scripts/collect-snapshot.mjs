@@ -4,10 +4,14 @@
 //
 //   node scripts/collect-snapshot.mjs --repo owner/repo [--ref <branch|sha>] --out payload.json
 //   node scripts/collect-snapshot.mjs --pr owner/repo <number> --out payload.json
-//   node scripts/collect-snapshot.mjs --local <dir> --out payload.json
+//   node scripts/collect-snapshot.mjs --diff <dir> --out payload.json
 //
-// ファイル本文とツリーは、どのモードでも既定でローカルの git object から読む
-// （GitHub API の tree / blob は呼ばない）。使うクローンは
+// --diff はローカルディレクトリの現在の作業ツリーを撮り、git 管理下なら
+// 未コミット変更を changes / changedLines として拾う（viewer の変更パネルと
+// 差分ガターが PR と同じように働く）。追跡外のファイルも gitignore 対象を除いて含める。
+//
+// GitHub を対象にする --repo / --pr は、ファイル本文とツリーを既定でローカルの
+// git object から読む（GitHub API の tree / blob は呼ばない）。使うクローンは
 //   1. --from-local <dir>（明示指定）
 //   2. cwd の周辺で見つかった owner/repo のクローン
 //   3. 一時ディレクトリへ shallow に確保したクローン（実行後に削除）
@@ -61,7 +65,7 @@ import {
   statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 
 const MAX_TOTAL_SOURCE_BYTES = 8_000_000; // 合意規模(1.5MB)の余裕枠。超過は fail closed
 // --fill-budget の既定値。埋め込み後の HTML には別途 16MB の制限があり、
@@ -883,20 +887,127 @@ const toReadEntries = (entries) =>
     read: () => readFileSync(entry.full),
   }));
 
-function buildLocalPayload(root, scope, fillBudget) {
-  const entries = toReadEntries(localEntries(root));
+// ---- 手元の未コミット変更（--diff） ----
+
+// git status の XY コードを ChangeStatus へ落とす（優先は index 側 = X）。
+const STATUS_BY_CODE = {
+  A: "added", M: "modified", D: "deleted", R: "renamed", C: "added",
+  T: "modified", U: "conflicted", "?": "untracked",
+};
+
+/**
+ * `git status --porcelain -z -uall` を読み、対象ディレクトリ配下の変更を返す。
+ * porcelain のパスはリポジトリルート基準なので、サブディレクトリを対象に
+ * している場合は prefix を剥がして files / fileContents と同じ基準に揃える。
+ */
+function localStatus(root) {
+  const raw = gitQuiet(root, "status", "--porcelain", "-z", "-uall");
+  if (raw === null) return [];
+  const prefix = gitQuiet(root, "rev-parse", "--show-prefix")?.trim() ?? "";
+  const fields = raw.split("\0");
+  const changes = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    const record = fields[index];
+    if (record === "") continue;
+    const [x, y] = record;
+    // rename / copy は「新パス\0元パス」の 2 フィールドで来る
+    if (x === "R" || x === "C" || y === "R" || y === "C") index += 1;
+    const path = record.slice(3);
+    if (prefix && !path.startsWith(prefix)) continue;
+    // 追跡外は index に無いので、常に「未ステージの変更」として扱う
+    const untracked = x === "?";
+    changes.push({
+      path: path.slice(prefix.length),
+      status: STATUS_BY_CODE[x === " " || untracked ? y : x] ?? "modified",
+      staged: !untracked && x !== " ",
+      unstaged: untracked || (y !== " " && y !== "?"),
+    });
+  }
+  return changes.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/**
+ * 埋め込む本文は working tree の内容なので、変更行も HEAD → working tree
+ * （staged + unstaged の合計）で数える。追跡外のファイルは全行が追加。
+ */
+function localChangedLines(root, change, fileContents, hasHead) {
+  if (change.status === "deleted") return [];
+  if (change.status === "untracked" || !hasHead) {
+    const lineCount = fileContents[change.path]?.lineCount ?? 0;
+    return Array.from({ length: lineCount }, (_, index) => ({
+      line: index + 1,
+      kind: "added",
+    }));
+  }
+  const patch = gitQuiet(root, "diff", "HEAD", "--", change.path);
+  if (patch === null) return [];
+  // git diff は差分ヘッダ（--- / +++）を伴うので、最初の hunk から渡す
+  const hunkStart = patch.indexOf("\n@@");
+  return hunkStart === -1
+    ? []
+    : changedLinesFromPatch(patch.slice(hunkStart + 1));
+}
+
+/** 追跡外（gitignore 対象は除く）のファイルも収集対象に足す。 */
+function withUntracked(root, entries, changes) {
+  const known = new Set(entries.map((entry) => entry.path));
+  for (const change of changes) {
+    if (change.status !== "untracked" || known.has(change.path)) continue;
+    try {
+      const stats = statSync(join(root, change.path));
+      if (stats.isFile()) {
+        entries.push({
+          path: change.path, size: stats.size, full: join(root, change.path),
+        });
+      }
+    } catch {
+      /* status 取得後に消えたファイルは載せない */
+    }
+  }
+  return entries;
+}
+
+/**
+ * ローカルディレクトリの現在の作業ツリーを収集する（--diff）。
+ * git 管理下なら未コミット変更を changes / changedLines として拾い、
+ * viewer の変更パネルと差分ガターが PR と同じように使える状態にする。
+ */
+function buildDiffPayload(target, scope, fillBudget) {
+  // "." のような相対指定でもディレクトリ名（= Artifact のタイトル）が決まるようにする
+  const root = resolve(target);
+  const isGit = isGitWorkTree(root);
+  const changes = isGit ? localStatus(root) : [];
+  const entries = toReadEntries(
+    withUntracked(root, localEntries(root), changes),
+  );
   const { files, fileContents, secrets, totalBytes, tierStats } =
     collectFromEntries(
       entries,
       scope,
-      makeFill(fillBudget, entries, new Set(), true),
+      // 変更ファイルを最優先に詰める（PR の tier 0 と同じ扱い）
+      makeFill(
+        fillBudget,
+        entries,
+        new Set(
+          changes
+            .filter((change) => change.status !== "deleted")
+            .map((change) => change.path),
+        ),
+        true,
+      ),
     );
-  let branch = null;
-  try {
-    branch = gitLocal(root, "branch", "--show-current").trim() || null;
-  } catch {
-    /* git リポジトリでない場合は branch なし */
+  const hasHead =
+    isGit && gitQuiet(root, "rev-parse", "--verify", "--quiet", "HEAD") !== null;
+  const changedLines = {};
+  for (const change of changes) {
+    change.changedLines = localChangedLines(root, change, fileContents, hasHead);
+    if (change.changedLines.length > 0) {
+      changedLines[change.path] = change.changedLines;
+    }
   }
+  const branch = isGit
+    ? (gitQuiet(root, "branch", "--show-current")?.trim() || null)
+    : null;
   const name = basename(root);
   return {
     payload: {
@@ -912,14 +1023,14 @@ function buildLocalPayload(root, scope, fillBudget) {
           name,
           selectionKind: "directory",
           branch,
-          isGitRepository: branch !== null,
+          isGitRepository: isGit,
           files,
-          changes: [],
+          changes,
         },
         initialFile: null,
       },
       fileContents,
-      changedLines: {},
+      changedLines,
       tours: {},
     },
     secrets,
@@ -975,10 +1086,10 @@ if (flag("--repo")) {
     fail("--pr は `--pr owner/repo <number>` 形式で指定してください");
   }
   result = buildPrPayload(owner, repo, number, scope, fillBudget, sourceOptions);
-} else if (flag("--local")) {
-  result = buildLocalPayload(flag("--local"), scope, fillBudget);
+} else if (flag("--diff")) {
+  result = buildDiffPayload(flag("--diff"), scope, fillBudget);
 } else {
-  fail("--repo / --pr / --local のいずれかを指定してください");
+  fail("--repo / --pr / --diff のいずれかを指定してください");
 }
 
 if (result.secrets.length > 0) {
