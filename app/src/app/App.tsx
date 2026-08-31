@@ -170,6 +170,10 @@ function App({ services, source, initialMode }: AppProps) {
                 focus={derived.activeFocus}
                 focusToken={review.focusToken}
                 isLoading={workspace.isLoadingFile}
+                navigationFiles={derived.navigationFiles}
+                onOpenLocation={actions.jumpToLocation}
+                jumpTarget={derived.jumpTarget}
+                jumpToken={derived.jumpToken}
               />
             </Suspense>
             {workspace.isLoadingFile && <div className="viewer-busy-line" />}

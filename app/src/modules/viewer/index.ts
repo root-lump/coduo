@@ -1,5 +1,10 @@
 // viewer module の公開 API。
-// 現状、外部が参照するのは CodeViewer（動的 import）だけであり、
-// Monaco を初期バンドルへ巻き込まないため index からは何も再輸出しない。
-// CodeViewer は app 層が "./ui/CodeViewer" を React.lazy で読み込む。
-export {};
+// Monaco を初期バンドルへ巻き込まないため、ここから再輸出してよいのは
+// Monaco に依存しない純関数・型だけ。CodeViewer（Monaco 依存）は
+// app 層が "./ui/CodeViewer" を React.lazy で読み込む。
+export {
+  buildDefinitionIndex,
+  definitionsFor,
+  referencesFor,
+} from "./codeNavigation";
+export type { DefinitionIndex, SymbolLocation } from "./codeNavigation";

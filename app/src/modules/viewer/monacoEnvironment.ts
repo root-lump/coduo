@@ -24,6 +24,16 @@ import "monaco-editor/languages/definitions/sql/register.js";
 import "monaco-editor/languages/definitions/css/register.js";
 import "monaco-editor/languages/definitions/html/register.js";
 import "monaco-editor/languages/definitions/xml/register.js";
+// editor core には gotoSymbol / contextmenu contrib が入っていないため、
+// コードナビゲーション（Cmd+クリック・F12・参照 peek・右クリックメニュー）に
+// 必要な分だけを明示 import で焼き込む（JS 約 75KB。フル bundle は避ける）。
+// パスは `monaco-editor/editor/contrib/...`（`monaco-editor/contrib/...` では解決されない）。
+import "monaco-editor/editor/contrib/gotoSymbol/browser/goToCommands.js";
+import "monaco-editor/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition.js";
+// peek の standalone 向け登録は referencesController ではなくこちら
+// （公式フル構成 editor.main.js と同じ組み合わせ）。
+import "monaco-editor/editor/standalone/browser/referenceSearch/standaloneReferenceSearch.js";
+import "monaco-editor/editor/contrib/contextmenu/browser/contextmenu.js";
 
 type MonacoGlobal = typeof globalThis & {
   MonacoEnvironment?: {

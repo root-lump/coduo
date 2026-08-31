@@ -49,6 +49,7 @@ export const fakeWorkspaceGateway = {
   selectFile: vi.fn<WorkspaceGateway["selectFile"]>(),
   readFile: vi.fn<WorkspaceGateway["readFile"]>(),
   loadChangedLines: vi.fn<WorkspaceGateway["loadChangedLines"]>(),
+  listFileContents: vi.fn<WorkspaceGateway["listFileContents"]>(),
 } satisfies WorkspaceGateway;
 
 export const fakeAgentGateway = {
@@ -70,6 +71,9 @@ export function resetFakeGateways() {
   fakeWorkspaceGateway.loadChangedLines
     .mockReset()
     .mockResolvedValue(fixtures.changedLines);
+  fakeWorkspaceGateway.listFileContents
+    .mockReset()
+    .mockResolvedValue([fixtures.fileContent]);
   fakeAgentGateway.review.mockReset();
   fakeAgentGateway.cancel.mockReset().mockResolvedValue(undefined);
 }
