@@ -1,18 +1,36 @@
 // Coduo snapshot collector（S3）。
-// GitHub（公式 CLI `gh` = 利用者自身の認証）またはローカルディレクトリから
-// 固定 revision のファイル群を収集し、CoduoSnapshotPayload v1（tours は空）を出力する。
+// GitHub リポジトリ / PR、またはローカルディレクトリから固定 revision の
+// ファイル群を収集し、CoduoSnapshotPayload v1（tours は空）を出力する。
 //
 //   node scripts/collect-snapshot.mjs --repo owner/repo [--ref <branch|sha>] --out payload.json
-//   node scripts/collect-snapshot.mjs --pr owner/repo <number> [--from-local <dir>] --out payload.json
-//   node scripts/collect-snapshot.mjs --local <dir> --out payload.json
+//   node scripts/collect-snapshot.mjs --pr owner/repo <number> --out payload.json
+//   node scripts/collect-snapshot.mjs --diff <dir> --out payload.json
+//
+// --diff はローカルディレクトリの現在の作業ツリーを撮り、git 管理下なら
+// 未コミット変更を changes / changedLines として拾う（viewer の変更パネルと
+// 差分ガターが PR と同じように働く）。追跡外のファイルも gitignore 対象を除いて含める。
+//
+// GitHub を対象にする --repo / --pr は、ファイル本文とツリーを既定でローカルの
+// git object から読む（GitHub API の tree / blob は呼ばない）。使うクローンは
+//   1. --from-local <dir>（明示指定）
+//   2. cwd の周辺で見つかった owner/repo のクローン
+//   3. 一時ディレクトリへ shallow に確保したクローン（実行後に削除）
+// の順に決める。既存クローンからは git object を直接読むため、checkout も
+// working tree の変更も行わない（利用者の作業状態に触れない）。
+//
+// gh（GitHub API）を使うのは PR のメタデータ（head/base SHA・変更ファイルと
+// その patch）だけで、リポジトリ規模に依らず数回で済む。--from-api を付けた
+// ときだけ、従来どおり本文も GitHub API から取得する。
 //
 // --fill-budget [bytes]: 容量超過を fail closed にせず、ファイルを PR との関連度で
 // ランク付けし、上位から予算（既定 7.5MB）いっぱいまで本文を詰める。予算に
 // 入らないファイルは飛ばして次へ進み、not-collected としてツリーに残る。
 //
-// --from-local <dir>: PR の本文を GitHub API ではなくローカル worktree から読む。
-// <dir> の HEAD が PR の head SHA と一致し、未コミット変更が無いことを検証する
-// （どちらか欠けると fail closed）。
+// --from-local <dir>: 収集に使うローカルクローンを明示する（自動探索を行わない）。
+// <dir> の remote が対象 owner/repo を指していない場合は fail closed。
+//
+// --from-api: 本文・ツリーの取得をローカル git ではなく GitHub API に戻す
+// （clone/fetch が使えない環境向けの退避経路）。
 //
 // 収集範囲の制御（いずれも複数指定可・ツリーには常に全ファイルが載る）:
 //   --include <path>        本文の収集対象を指定サブツリー（またはファイル）に限定する
@@ -38,8 +56,16 @@ import {
   scanSecrets,
   stableStringify,
 } from "./lib.mjs";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, basename } from "node:path";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, relative, resolve } from "node:path";
 
 const MAX_TOTAL_SOURCE_BYTES = 8_000_000; // 合意規模(1.5MB)の余裕枠。超過は fail closed
 // --fill-budget の既定値。埋め込み後の HTML には別途 16MB の制限があり、
@@ -62,6 +88,253 @@ function gh(path, ...flags) {
     fail(`gh api ${path} が失敗しました: ${cause.message?.split("\n")[0]}`);
   }
 }
+
+// ---- ローカル git 経路（既定の収集元） ----
+
+const remoteUrlOf = (owner, repo) => `https://github.com/${owner}/${repo}.git`;
+
+// private リポジトリで素の git が認証できないときだけ借りる credential helper。
+// `gh auth setup-git` が gitconfig へ書くのと同じ形（既定の列を空値でリセット
+// してから gh を足す）で、トークンをこちらで扱うことはしない。
+const GH_CREDENTIAL_ARGS = [
+  "-c", "credential.https://github.com.helper=",
+  "-c", "credential.https://github.com.helper=!gh auth git-credential",
+];
+
+function gitLocal(root, ...gitArgs) {
+  return execFileSync("git", ["-C", root, ...gitArgs], {
+    encoding: "utf8",
+    maxBuffer: 128 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+}
+
+/** 失敗を例外にせず null で返す git 実行（存在確認・任意の fetch 用）。 */
+function gitQuiet(root, ...gitArgs) {
+  try {
+    return gitLocal(root, ...gitArgs);
+  } catch {
+    return null;
+  }
+}
+
+function isGitWorkTree(root) {
+  try {
+    return gitLocal(root, "rev-parse", "--is-inside-work-tree").trim() === "true";
+  } catch {
+    return false;
+  }
+}
+
+function slugOfRemoteUrl(url) {
+  const match = /(?:github\.com[:/])([^/\s]+)\/([^/\s]+?)(?:\.git)?$/i.exec(
+    url ?? "",
+  );
+  return match ? `${match[1]}/${match[2]}`.toLowerCase() : null;
+}
+
+function remotesOf(root) {
+  return (gitQuiet(root, "remote", "-v") ?? "")
+    .split("\n")
+    .map((line) => line.trim().split(/\s+/))
+    .filter(([name, url]) => name && url)
+    .map(([name, url]) => ({ name, slug: slugOfRemoteUrl(url) }));
+}
+
+const hasRemoteFor = (root, owner, repo) =>
+  remotesOf(root).some((remote) => remote.slug === `${owner}/${repo}`.toLowerCase());
+
+/**
+ * owner/repo を指す remote 名。見つからなければ https URL を直接返す
+ * （origin が fork のクローンでも、base 側の refs/pull を取りに行けるようにする）。
+ */
+function remoteFor(root, owner, repo) {
+  const slug = `${owner}/${repo}`.toLowerCase();
+  return (
+    remotesOf(root).find((remote) => remote.slug === slug)?.name ??
+    remoteUrlOf(owner, repo)
+  );
+}
+
+/** cwd の周辺（自身のリポジトリと、その隣・直下）から owner/repo のクローンを探す。 */
+function findLocalClone(owner, repo) {
+  const cwd = process.cwd();
+  const top = gitQuiet(cwd, "rev-parse", "--show-toplevel")?.trim();
+  const candidates = [
+    ...(top ? [top, join(dirname(top), repo)] : []),
+    cwd,
+    join(cwd, repo),
+  ];
+  for (const dir of candidates) {
+    if (!existsSync(dir) || !isGitWorkTree(dir)) continue;
+    const root = gitQuiet(dir, "rev-parse", "--show-toplevel")?.trim();
+    if (root && hasRemoteFor(root, owner, repo)) return root;
+  }
+  return null;
+}
+
+// 一時リポジトリは実行後に必ず片付ける（fail() は process.exit なので exit で拾う）。
+const tempRoots = [];
+process.on("exit", () => {
+  for (const root of tempRoots) rmSync(root, { recursive: true, force: true });
+});
+process.on("SIGINT", () => process.exit(130));
+
+function createTempRepo() {
+  const root = mkdtempSync(join(tmpdir(), "coduo-git-"));
+  tempRoots.push(root);
+  if (gitQuiet(root, "init", "--quiet") === null) {
+    fail(`一時 git リポジトリを初期化できませんでした: ${root}`);
+  }
+  return root;
+}
+
+/**
+ * 収集に使うローカル git リポジトリを決める。
+ * --from-local（明示）→ cwd 周辺のクローン → 一時リポジトリ（fetch で確保）の順。
+ */
+function resolveWorkRepo(owner, repo, fromLocal) {
+  if (fromLocal) {
+    if (!isGitWorkTree(fromLocal)) {
+      fail(`--from-local のディレクトリが git work tree ではありません: ${fromLocal}`);
+    }
+    const root = gitLocal(fromLocal, "rev-parse", "--show-toplevel").trim();
+    if (!hasRemoteFor(root, owner, repo)) {
+      fail(
+        `--from-local に指定された ${root} に ${owner}/${repo} を指す remote がありません（別リポジトリを読まないよう fail closed）。`,
+      );
+    }
+    return { root, temporary: false };
+  }
+  const found = findLocalClone(owner, repo);
+  if (found) return { root: found, temporary: false };
+  return { root: createTempRepo(), temporary: true };
+}
+
+/**
+ * refspec を fetch する。shallow は一時リポジトリのときだけ（利用者の既存
+ * クローンへ --depth を持ち込むと、そのリポジトリが shallow 化してしまう）。
+ */
+function fetchFromRemote(root, source, refspec, shallow) {
+  const args = [
+    "fetch", "--quiet", "--no-tags",
+    ...(shallow ? ["--depth", "1"] : []),
+    source, refspec,
+  ];
+  if (gitQuiet(root, ...args) !== null) return true;
+  return gitQuiet(root, ...GH_CREDENTIAL_ARGS, ...args) !== null;
+}
+
+const hasCommit = (root, sha) =>
+  gitQuiet(root, "cat-file", "-e", `${sha}^{commit}`) !== null;
+
+/** 固定 revision の object を手元に確保する（無ければ fetch する）。 */
+function ensureCommit(root, owner, repo, sha, refspec, shallow) {
+  if (hasCommit(root, sha)) return;
+  const source = remoteFor(root, owner, repo);
+  for (const target of [refspec, sha].filter(Boolean)) {
+    if (fetchFromRemote(root, source, target, shallow) && hasCommit(root, sha)) {
+      return;
+    }
+  }
+  fail(
+    [
+      `${owner}/${repo} の revision ${sha.slice(0, 7)} をローカルへ確保できませんでした（fetch 失敗）。`,
+      "認証が必要なら `gh auth setup-git` を実行するか、--from-local で手元のクローンを指定してください。",
+      "clone/fetch が使えない環境では --from-api で GitHub API 経由の収集に切り替えられます。",
+    ].join("\n"),
+  );
+}
+
+function lsRemote(root, source, flags, refs) {
+  const args = ["ls-remote", ...flags, source, ...refs];
+  return (
+    gitQuiet(root, ...args) ?? gitQuiet(root, ...GH_CREDENTIAL_ARGS, ...args)
+  );
+}
+
+/**
+ * --repo の ref を固定 SHA に解決する。手元のクローンが古い可能性があるため
+ * remote の ls-remote を優先し、問い合わせられないときだけ手元の参照へ落とす。
+ */
+function resolveRepoRevision(root, owner, repo, ref) {
+  if (ref && /^[0-9a-f]{40}$/i.test(ref)) {
+    return { sha: ref.toLowerCase(), branch: null };
+  }
+  const raw = lsRemote(
+    root,
+    remoteFor(root, owner, repo),
+    ref ? [] : ["--symref"],
+    ref ? [ref] : ["HEAD"],
+  );
+  if (raw !== null) {
+    let branch = ref ?? null;
+    let head = null;
+    let peeled = null; // annotated tag はコミットまで剥がした ^{} 側を使う
+    for (const line of raw.split("\n")) {
+      const symref = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/.exec(line);
+      if (symref) {
+        branch = symref[1];
+        continue;
+      }
+      const [hash, name] = line.trim().split(/\s+/);
+      if (!/^[0-9a-f]{40}$/.test(hash ?? "")) continue;
+      if (name?.endsWith("^{}")) peeled = hash;
+      else head ??= hash;
+    }
+    const sha = peeled ?? head;
+    if (sha) return { sha, branch };
+  }
+  for (const candidate of ref ? [ref, `origin/${ref}`] : ["origin/HEAD", "HEAD"]) {
+    const sha = gitQuiet(
+      root, "rev-parse", "--verify", "--quiet", `${candidate}^{commit}`,
+    )?.trim();
+    if (sha) {
+      console.error(
+        `coduo: remote へ問い合わせられなかったため、手元の ${candidate} (${sha.slice(0, 7)}) を固定 revision に使います。`,
+      );
+      return { sha, branch: ref ?? null };
+    }
+  }
+  fail(
+    `${owner}/${repo} の ref ${ref ?? "(default branch)"} を解決できませんでした。`,
+  );
+}
+
+function gitBlob(root, blobSha) {
+  return execFileSync("git", ["-C", root, "cat-file", "blob", blobSha], {
+    maxBuffer: 256 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+}
+
+/**
+ * 固定 revision のツリーを git object から読む。working tree には触れないので、
+ * 利用者のクローンを checkout し直したり汚したりしない。
+ */
+function treeEntries(root, revision) {
+  const entries = [];
+  for (const record of gitLocal(
+    root, "ls-tree", "-r", "-z", "--long", revision,
+  ).split("\0")) {
+    if (record === "") continue;
+    const tab = record.indexOf("\t");
+    const [, type, blobSha, size] = record.slice(0, tab).split(/\s+/);
+    if (type !== "blob") continue; // submodule（commit エントリ）は本文を持たない
+    let cached;
+    entries.push({
+      path: record.slice(tab + 1),
+      size: Number(size),
+      read: () => (cached ??= gitBlob(root, blobSha)),
+    });
+  }
+  return entries;
+}
+
+const describeSource = (root, temporary) =>
+  temporary ? `一時クローン (${root})` : `ローカルクローン (${root})`;
+
+// ---- GitHub API 経路（--from-api のときだけ） ----
 
 function collectGitHubTree(owner, repo, sha) {
   const tree = gh(`repos/${owner}/${repo}/git/trees/${sha}?recursive=1`);
@@ -377,60 +650,108 @@ function makeFill(fillBudget, entries, changedPaths, canScanAll) {
   return { budget: fillBudget, tierOf };
 }
 
-function buildRepoPayload(owner, repo, ref, scope, fillBudget) {
+function repoPayloadFrom(owner, repo, sha, branch, collected) {
+  return {
+    version: 1,
+    source: { kind: "repository", name: `${owner}/${repo}`, revision: sha },
+    workspace: {
+      snapshot: {
+        root: `${owner}/${repo}`,
+        name: repo,
+        selectionKind: "directory",
+        branch,
+        isGitRepository: true,
+        files: collected.files,
+        changes: [],
+      },
+      initialFile: null,
+    },
+    fileContents: collected.fileContents,
+    changedLines: {},
+    tours: {},
+  };
+}
+
+// 既定経路。ツリーも本文もローカルの git object から読むため、
+// GitHub API は 1 度も呼ばない（tree truncation の制約も受けない）。
+function buildRepoPayload(owner, repo, ref, scope, fillBudget, options) {
+  if (options.fromApi) {
+    return buildRepoPayloadViaApi(owner, repo, ref, scope, fillBudget);
+  }
+  const { root, temporary } = resolveWorkRepo(owner, repo, options.fromLocal);
+  const { sha, branch } = resolveRepoRevision(root, owner, repo, ref);
+  ensureCommit(
+    root, owner, repo, sha,
+    ref && !/^[0-9a-f]{7,40}$/i.test(ref) ? ref : branch, temporary,
+  );
+  const entries = treeEntries(root, sha);
+  const collected = collectFromEntries(
+    entries,
+    scope,
+    // ローカル object の読み出しは安価なので、逆方向 import 解析まで行う
+    makeFill(fillBudget, entries, new Set(), true),
+  );
+  return {
+    payload: repoPayloadFrom(owner, repo, sha, branch ?? ref ?? null, collected),
+    secrets: collected.secrets,
+    totalBytes: collected.totalBytes,
+    tierStats: collected.tierStats,
+    // ローカル収集では公開/非公開を確認できないため、安全側（private 扱い）に倒す
+    isPrivate: true,
+    visibility: "unknown",
+    collectedFrom: describeSource(root, temporary),
+  };
+}
+
+// 退避経路（--from-api）。ツリーと blob を GitHub API から取得する。
+function buildRepoPayloadViaApi(owner, repo, ref, scope, fillBudget) {
   const meta = gh(`repos/${owner}/${repo}`);
   const commit = gh(
     `repos/${owner}/${repo}/commits/${ref ?? meta.default_branch}`,
   );
   const sha = commit.sha;
-  const blobs = collectGitHubTree(owner, repo, sha);
-  const entries = githubEntries(owner, repo, blobs);
-  const { files, fileContents, secrets, totalBytes, tierStats } =
-    collectFromEntries(
-      entries,
-      scope,
-      makeFill(fillBudget, entries, new Set(), false),
-    );
+  const entries = githubEntries(owner, repo, collectGitHubTree(owner, repo, sha));
+  const collected = collectFromEntries(
+    entries,
+    scope,
+    makeFill(fillBudget, entries, new Set(), false),
+  );
   return {
-    payload: {
-      version: 1,
-      source: { kind: "repository", name: `${owner}/${repo}`, revision: sha },
-      workspace: {
-        snapshot: {
-          root: `${owner}/${repo}`,
-          name: repo,
-          selectionKind: "directory",
-          branch: ref ?? meta.default_branch,
-          isGitRepository: true,
-          files,
-          changes: [],
-        },
-        initialFile: null,
-      },
-      fileContents,
-      changedLines: {},
-      tours: {},
-    },
-    secrets,
-    totalBytes,
-    tierStats,
+    payload: repoPayloadFrom(
+      owner, repo, sha, ref ?? meta.default_branch, collected,
+    ),
+    secrets: collected.secrets,
+    totalBytes: collected.totalBytes,
+    tierStats: collected.tierStats,
     isPrivate: Boolean(meta.private),
+    visibility: meta.private ? "private" : "public",
+    collectedFrom: "GitHub API",
   };
 }
 
-function buildPrPayload(owner, repo, number, scope, fromLocal, fillBudget) {
+// PR は差分そのものが対象なので、head/base SHA と変更ファイル（patch 付き）だけは
+// GitHub API から取る。リポジトリ規模に依らず数回で済み、本文は既定どおり
+// ローカルの git object（refs/pull/<N>/head を必要なら fetch）から読む。
+function buildPrPayload(owner, repo, number, scope, fillBudget, options) {
   const pr = gh(`repos/${owner}/${repo}/pulls/${number}`);
   const headSha = pr.head.sha;
   const baseSha = pr.base.sha;
   const prFiles = gh(`repos/${owner}/${repo}/pulls/${number}/files`, "--paginate");
   let entries;
-  if (fromLocal) {
-    // 本文をローカル worktree から読む。ファイルごとの blob API 呼び出しが
-    // 不要になるため、大きいリポジトリでも API 2 回で収集できる。
-    verifyLocalHead(fromLocal, headSha);
-    entries = toReadEntries(gitTrackedEntries(fromLocal));
-  } else {
+  let collectedFrom;
+  let local;
+  if (options.fromApi) {
     entries = githubEntries(owner, repo, collectGitHubTree(owner, repo, headSha));
+    collectedFrom = "GitHub API";
+  } else {
+    local = resolveWorkRepo(owner, repo, options.fromLocal);
+    // head SHA の object さえ手元にあれば良い（checkout も clean な worktree も不要）
+    ensureCommit(
+      local.root, owner, repo, headSha,
+      `refs/pull/${number}/head`, local.temporary,
+    );
+    entries = treeEntries(local.root, headSha);
+    collectedFrom = describeSource(local.root, local.temporary);
   }
   const changedPaths = new Set(
     prFiles.filter((file) => file.status !== "removed").map((file) => file.filename),
@@ -439,8 +760,8 @@ function buildPrPayload(owner, repo, number, scope, fromLocal, fillBudget) {
     collectFromEntries(
       entries,
       scope,
-      // 逆方向 import 解析（呼び出し元）はローカル worktree があるときだけ行う
-      makeFill(fillBudget, entries, changedPaths, Boolean(fromLocal)),
+      // 逆方向 import 解析（呼び出し元）は blob 取得が安価なローカル収集のときだけ
+      makeFill(fillBudget, entries, changedPaths, !options.fromApi),
     );
   const statusMap = {
     added: "added",
@@ -503,6 +824,8 @@ function buildPrPayload(owner, repo, number, scope, fromLocal, fillBudget) {
     totalBytes,
     tierStats,
     isPrivate: Boolean(pr.base.repo?.private),
+    visibility: pr.base.repo?.private ? "private" : "public",
+    collectedFrom,
   };
 }
 
@@ -521,22 +844,6 @@ function walkLocal(root) {
   };
   visit(root);
   return out;
-}
-
-function gitLocal(root, ...gitArgs) {
-  return execFileSync("git", ["-C", root, ...gitArgs], {
-    encoding: "utf8",
-    maxBuffer: 128 * 1024 * 1024,
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-}
-
-function isGitWorkTree(root) {
-  try {
-    return gitLocal(root, "rev-parse", "--is-inside-work-tree").trim() === "true";
-  } catch {
-    return false;
-  }
 }
 
 // git の追跡ファイルだけを対象にする。ファイルシステム走査と違い、
@@ -580,42 +887,127 @@ const toReadEntries = (entries) =>
     read: () => readFileSync(entry.full),
   }));
 
+// ---- 手元の未コミット変更（--diff） ----
+
+// git status の XY コードを ChangeStatus へ落とす（優先は index 側 = X）。
+const STATUS_BY_CODE = {
+  A: "added", M: "modified", D: "deleted", R: "renamed", C: "added",
+  T: "modified", U: "conflicted", "?": "untracked",
+};
+
 /**
- * ハイブリッド収集（--pr --from-local）の前提検証。差分メタデータは GitHub、
- * 本文はローカル worktree から取るため、両者が同じ revision を指していないと
- * 「固定 revision のスナップショット」という前提が崩れる。どちらか欠けても fail closed。
+ * `git status --porcelain -z -uall` を読み、対象ディレクトリ配下の変更を返す。
+ * porcelain のパスはリポジトリルート基準なので、サブディレクトリを対象に
+ * している場合は prefix を剥がして files / fileContents と同じ基準に揃える。
  */
-function verifyLocalHead(root, headSha) {
-  if (!isGitWorkTree(root)) {
-    fail(`--from-local のディレクトリが git work tree ではありません: ${root}`);
+function localStatus(root) {
+  const raw = gitQuiet(root, "status", "--porcelain", "-z", "-uall");
+  if (raw === null) return [];
+  const prefix = gitQuiet(root, "rev-parse", "--show-prefix")?.trim() ?? "";
+  const fields = raw.split("\0");
+  const changes = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    const record = fields[index];
+    if (record === "") continue;
+    const [x, y] = record;
+    // rename / copy は「新パス\0元パス」の 2 フィールドで来る
+    if (x === "R" || x === "C" || y === "R" || y === "C") index += 1;
+    const path = record.slice(3);
+    if (prefix && !path.startsWith(prefix)) continue;
+    // 追跡外は index に無いので、常に「未ステージの変更」として扱う
+    const untracked = x === "?";
+    changes.push({
+      path: path.slice(prefix.length),
+      status: STATUS_BY_CODE[x === " " || untracked ? y : x] ?? "modified",
+      staged: !untracked && x !== " ",
+      unstaged: untracked || (y !== " " && y !== "?"),
+    });
   }
-  const head = gitLocal(root, "rev-parse", "HEAD").trim();
-  if (head !== headSha) {
-    fail(
-      `--from-local の HEAD (${head.slice(0, 7)}) が PR の head SHA (${headSha.slice(0, 7)}) と一致しません。PR のブランチを checkout してから再実行してください。`,
-    );
-  }
-  if (gitLocal(root, "status", "--porcelain").trim() !== "") {
-    fail(
-      "--from-local の worktree に未コミット変更があります（本文が head SHA の内容であることを保証できません）。",
-    );
-  }
+  return changes.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-function buildLocalPayload(root, scope, fillBudget) {
-  const entries = toReadEntries(localEntries(root));
+/**
+ * 埋め込む本文は working tree の内容なので、変更行も HEAD → working tree
+ * （staged + unstaged の合計）で数える。追跡外のファイルは全行が追加。
+ */
+function localChangedLines(root, change, fileContents, hasHead) {
+  if (change.status === "deleted") return [];
+  if (change.status === "untracked" || !hasHead) {
+    const lineCount = fileContents[change.path]?.lineCount ?? 0;
+    return Array.from({ length: lineCount }, (_, index) => ({
+      line: index + 1,
+      kind: "added",
+    }));
+  }
+  const patch = gitQuiet(root, "diff", "HEAD", "--", change.path);
+  if (patch === null) return [];
+  // git diff は差分ヘッダ（--- / +++）を伴うので、最初の hunk から渡す
+  const hunkStart = patch.indexOf("\n@@");
+  return hunkStart === -1
+    ? []
+    : changedLinesFromPatch(patch.slice(hunkStart + 1));
+}
+
+/** 追跡外（gitignore 対象は除く）のファイルも収集対象に足す。 */
+function withUntracked(root, entries, changes) {
+  const known = new Set(entries.map((entry) => entry.path));
+  for (const change of changes) {
+    if (change.status !== "untracked" || known.has(change.path)) continue;
+    try {
+      const stats = statSync(join(root, change.path));
+      if (stats.isFile()) {
+        entries.push({
+          path: change.path, size: stats.size, full: join(root, change.path),
+        });
+      }
+    } catch {
+      /* status 取得後に消えたファイルは載せない */
+    }
+  }
+  return entries;
+}
+
+/**
+ * ローカルディレクトリの現在の作業ツリーを収集する（--diff）。
+ * git 管理下なら未コミット変更を changes / changedLines として拾い、
+ * viewer の変更パネルと差分ガターが PR と同じように使える状態にする。
+ */
+function buildDiffPayload(target, scope, fillBudget) {
+  // "." のような相対指定でもディレクトリ名（= Artifact のタイトル）が決まるようにする
+  const root = resolve(target);
+  const isGit = isGitWorkTree(root);
+  const changes = isGit ? localStatus(root) : [];
+  const entries = toReadEntries(
+    withUntracked(root, localEntries(root), changes),
+  );
   const { files, fileContents, secrets, totalBytes, tierStats } =
     collectFromEntries(
       entries,
       scope,
-      makeFill(fillBudget, entries, new Set(), true),
+      // 変更ファイルを最優先に詰める（PR の tier 0 と同じ扱い）
+      makeFill(
+        fillBudget,
+        entries,
+        new Set(
+          changes
+            .filter((change) => change.status !== "deleted")
+            .map((change) => change.path),
+        ),
+        true,
+      ),
     );
-  let branch = null;
-  try {
-    branch = gitLocal(root, "branch", "--show-current").trim() || null;
-  } catch {
-    /* git リポジトリでない場合は branch なし */
+  const hasHead =
+    isGit && gitQuiet(root, "rev-parse", "--verify", "--quiet", "HEAD") !== null;
+  const changedLines = {};
+  for (const change of changes) {
+    change.changedLines = localChangedLines(root, change, fileContents, hasHead);
+    if (change.changedLines.length > 0) {
+      changedLines[change.path] = change.changedLines;
+    }
   }
+  const branch = isGit
+    ? (gitQuiet(root, "branch", "--show-current")?.trim() || null)
+    : null;
   const name = basename(root);
   return {
     payload: {
@@ -631,20 +1023,22 @@ function buildLocalPayload(root, scope, fillBudget) {
           name,
           selectionKind: "directory",
           branch,
-          isGitRepository: branch !== null,
+          isGitRepository: isGit,
           files,
-          changes: [],
+          changes,
         },
         initialFile: null,
       },
       fileContents,
-      changedLines: {},
+      changedLines,
       tours: {},
     },
     secrets,
     totalBytes,
     tierStats,
     isPrivate: true,
+    visibility: "local",
+    collectedFrom: `ローカルディレクトリ (${root})`,
   };
 }
 
@@ -672,24 +1066,30 @@ let fillBudget;
   }
 }
 
+// 本文の取得元。既定はローカル git（--from-api のときだけ GitHub API）。
+const sourceOptions = {
+  fromLocal: flag("--from-local"),
+  fromApi: args.includes("--from-api"),
+};
+
 let result;
 if (flag("--repo")) {
   const [owner, repo] = flag("--repo").split("/");
   if (!owner || !repo) fail("--repo は owner/repo 形式で指定してください");
-  result = buildRepoPayload(owner, repo, flag("--ref"), scope, fillBudget);
+  result = buildRepoPayload(
+    owner, repo, flag("--ref"), scope, fillBudget, sourceOptions,
+  );
 } else if (flag("--pr")) {
   const [owner, repo] = flag("--pr").split("/");
   const number = args[args.indexOf("--pr") + 2];
   if (!owner || !repo || !/^\d+$/.test(number ?? "")) {
     fail("--pr は `--pr owner/repo <number>` 形式で指定してください");
   }
-  result = buildPrPayload(
-    owner, repo, number, scope, flag("--from-local"), fillBudget,
-  );
-} else if (flag("--local")) {
-  result = buildLocalPayload(flag("--local"), scope, fillBudget);
+  result = buildPrPayload(owner, repo, number, scope, fillBudget, sourceOptions);
+} else if (flag("--diff")) {
+  result = buildDiffPayload(flag("--diff"), scope, fillBudget);
 } else {
-  fail("--repo / --pr / --local のいずれかを指定してください");
+  fail("--repo / --pr / --diff のいずれかを指定してください");
 }
 
 if (result.secrets.length > 0) {
@@ -711,6 +1111,8 @@ console.error(
   JSON.stringify(
     {
       source: result.payload.source,
+      collectedFrom: result.collectedFrom,
+      visibility: result.visibility,
       files: snapshot.files.length,
       readable: Object.keys(result.payload.fileContents).length,
       notCollected: snapshot.files.filter(
