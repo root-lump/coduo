@@ -57,16 +57,5 @@
       }
     ]
   },
-  "warnings": ["step-2 にコード注釈を付け直せませんでした。"],
-  "usage": {
-    "inputTokens": 1200,
-    "cachedInputTokens": 800,
-    "outputTokens": 350,
-    "reasoningOutputTokens": 120,
-    "totalCostUsd": 0.042
-  },
-  "debug": {
-    "prompt": "リポジトリを説明してください",
-    "response": "{\"title\":\"デモリポジトリのレビュー\"}"
-  }
+  "warnings": ["step-2 にコード注釈を付け直せませんでした。"]
 }

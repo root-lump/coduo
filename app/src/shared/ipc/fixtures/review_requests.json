@@ -1,5 +1,0 @@
-[
-  { "kind": "repository" },
-  { "kind": "file", "path": "src/lib.rs" },
-  { "kind": "pull_request" }
-]

@@ -1,5 +1,5 @@
 // 開発・visual regression 用の固定 snapshot payload。
-// データは IPC contract fixture（shared/ipc/fixtures/）を流用し、
+// データは snapshot のサンプル（shared/snapshot/samples/）を流用し、
 // Skill が生成する payload と同じ形に組み立てる。
 import type { AgentReviewResult } from "../../modules/review";
 import type {
@@ -7,10 +7,10 @@ import type {
   FileContent,
   WorkspaceSelection,
 } from "../../modules/workspace";
-import directorySelection from "../../shared/ipc/fixtures/workspace_selection_directory.json";
-import fileContent from "../../shared/ipc/fixtures/file_content.json";
-import changedLines from "../../shared/ipc/fixtures/changed_lines.json";
-import reviewResult from "../../shared/ipc/fixtures/agent_review_result.json";
+import directorySelection from "../../shared/snapshot/samples/workspace_selection_directory.json";
+import fileContent from "../../shared/snapshot/samples/file_content.json";
+import changedLines from "../../shared/snapshot/samples/changed_lines.json";
+import reviewResult from "../../shared/snapshot/samples/agent_review_result.json";
 import type { CoduoSnapshotPayload } from "./payload";
 
 const workspace = directorySelection as unknown as WorkspaceSelection;

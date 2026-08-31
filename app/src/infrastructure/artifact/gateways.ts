@@ -64,8 +64,6 @@ export function createSnapshotReviewGateway(
           code: "unavailable_file",
           message:
             "この対象の説明はまだ生成されていません。Claude との会話でこのスナップショットの再生成を依頼してください。",
-          usage: null,
-          debug: null,
         };
         throw error;
       }

@@ -91,7 +91,7 @@ describe("起動とスナップショット展開", () => {
     renderApp();
 
     await screen.findByText("説明を表示できませんでした");
-    expect(screen.getByText("Codexにログインしてください")).toBeTruthy();
+    expect(screen.getByText("Claude Code にログインしてください")).toBeTruthy();
     expect(screen.getByRole("button", { name: "再試行" })).toBeTruthy();
   });
 });

@@ -3,7 +3,6 @@ export type {
   AgentKind,
   AgentReviewError,
   AgentReviewResult,
-  AgentUsage,
   CodeAnnotation,
   CodeRange,
   CodeTarget,
@@ -13,7 +12,6 @@ export type {
   ReviewMode,
   ReviewRequest,
   ReviewStep,
-  ReviewStyle,
   ReviewStyleKind,
   ReviewTour,
 } from "./domain";

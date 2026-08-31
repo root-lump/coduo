@@ -1,18 +1,18 @@
 // ワークスペース領域の語彙。
-// IPC を流れる wire 型の正本は生成物（src/shared/ipc/generated/）であり、
+// snapshot payload に現れる型の正本は src/shared/snapshot/ であり、
 // ここではそれを再輸出する。手書きの複製を作らないこと。
 
-export type { ChangeStatus } from "../../shared/ipc/generated/ChangeStatus";
-export type { ChangedFile } from "../../shared/ipc/generated/ChangedFile";
-export type { ChangedLine } from "../../shared/ipc/generated/ChangedLine";
-export type { ChangedLineKind } from "../../shared/ipc/generated/ChangedLineKind";
-export type { FileReadability } from "../../shared/ipc/generated/FileReadability";
-export type { RepositoryFile } from "../../shared/ipc/generated/RepositoryFile";
-export type { RepositorySnapshot } from "../../shared/ipc/generated/RepositorySnapshot";
-export type { SelectionKind } from "../../shared/ipc/generated/SelectionKind";
-export type { WorkspaceSelection } from "../../shared/ipc/generated/WorkspaceSelection";
+export type { ChangeStatus } from "../../shared/snapshot/ChangeStatus";
+export type { ChangedFile } from "../../shared/snapshot/ChangedFile";
+export type { ChangedLine } from "../../shared/snapshot/ChangedLine";
+export type { ChangedLineKind } from "../../shared/snapshot/ChangedLineKind";
+export type { FileReadability } from "../../shared/snapshot/FileReadability";
+export type { RepositoryFile } from "../../shared/snapshot/RepositoryFile";
+export type { RepositorySnapshot } from "../../shared/snapshot/RepositorySnapshot";
+export type { SelectionKind } from "../../shared/snapshot/SelectionKind";
+export type { WorkspaceSelection } from "../../shared/snapshot/WorkspaceSelection";
 
-import type { FileContent as WireFileContent } from "../../shared/ipc/generated/FileContent";
+import type { FileContent as WireFileContent } from "../../shared/snapshot/FileContent";
 
 /**
  * ビューアに表示するファイル内容。

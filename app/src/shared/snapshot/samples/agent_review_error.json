@@ -1,0 +1,5 @@
+{
+  "agent": "claude",
+  "code": "not_authenticated",
+  "message": "Claude Code にログインしてください"
+}

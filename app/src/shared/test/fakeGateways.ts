@@ -1,8 +1,8 @@
 // App 統合テスト用の fake gateway 群。
-// データは IPC contract fixture（src/shared/ipc/fixtures/）を流用し、
-// 「実際に wire を流れる形」でフロントエンドを駆動する。
+// データは snapshot のサンプル（src/shared/snapshot/samples/）を流用し、
+// 「実際に payload へ載る形」でフロントエンドを駆動する。
 // 注意: as 変換は JSON import でリテラル型が widen される（"directory" → string）
-// ことへの対処であり、値そのものは生成型と一致する（契約テストが保証）。
+// ことへの対処であり、値そのものは src/shared/snapshot/ の型と一致する。
 import { vi } from "vitest";
 import type { AppServices } from "../../app/composition";
 import type {
@@ -15,12 +15,12 @@ import type {
   WorkspaceGateway,
   WorkspaceSelection,
 } from "../../modules/workspace";
-import directorySelectionFixture from "../ipc/fixtures/workspace_selection_directory.json";
-import fileSelectionFixture from "../ipc/fixtures/workspace_selection_file.json";
-import fileContentFixture from "../ipc/fixtures/file_content.json";
-import changedLinesFixture from "../ipc/fixtures/changed_lines.json";
-import reviewResultFixture from "../ipc/fixtures/agent_review_result.json";
-import reviewErrorFixture from "../ipc/fixtures/agent_review_error.json";
+import directorySelectionFixture from "../snapshot/samples/workspace_selection_directory.json";
+import fileSelectionFixture from "../snapshot/samples/workspace_selection_file.json";
+import fileContentFixture from "../snapshot/samples/file_content.json";
+import changedLinesFixture from "../snapshot/samples/changed_lines.json";
+import reviewResultFixture from "../snapshot/samples/agent_review_result.json";
+import reviewErrorFixture from "../snapshot/samples/agent_review_error.json";
 
 export const fixtures = {
   directorySelection:
