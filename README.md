@@ -60,7 +60,7 @@ GitHub API（`gh`）を呼ぶのは Pull Request のメタデータ（head/base 
 
 ```
 .claude-plugin/               プラグイン / マーケットプレイス定義
-skills/create-code-viewer/    スキル本体
+skills/create-code-tour/      スキル本体
 ├── SKILL.md                  生成手順の正本
 ├── scripts/                  collect / validate / add-tour / embed
 ├── assets/template.html      ビルド済み viewer template（単一 HTML）

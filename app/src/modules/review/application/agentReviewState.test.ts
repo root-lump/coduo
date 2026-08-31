@@ -64,8 +64,6 @@ describe("agentReviewReducer", () => {
         agent: "claude",
         tour,
         warnings: [],
-        usage: { inputTokens: 100, outputTokens: 20 },
-        debug: { prompt: "sent", response: "received" },
       },
     });
 
@@ -89,11 +87,9 @@ describe("agentReviewReducer", () => {
       requestId: 4,
       selectionId: 1,
       error: {
-        agent: "codex",
+        agent: "claude",
         code: "internal",
         message: "mainとの差分がありません。",
-        usage: null,
-        debug: { prompt: "sent", response: "failed" },
       },
     });
 
@@ -116,7 +112,7 @@ describe("agentReviewReducer", () => {
       repositoryRoot: "/repo/old",
       requestId: 5,
       selectionId: 1,
-      result: { agent: "claude", tour, warnings: [], usage: null, debug: null },
+      result: { agent: "claude", tour, warnings: [] },
     });
 
     expect(unchanged).toBe(current);
@@ -134,7 +130,7 @@ describe("agentReviewReducer", () => {
       repositoryRoot: "/repo/same",
       requestId: 7,
       selectionId: 1,
-      result: { agent: "claude", tour, warnings: [], usage: null, debug: null },
+      result: { agent: "claude", tour, warnings: [] },
     });
 
     expect(unchanged).toBe(current);
@@ -170,8 +166,6 @@ describe("agentReviewReducer", () => {
         agent: "claude",
         code: "cancelled",
         message: "Claude Codeの生成を中止しました。",
-        usage: null,
-        debug: null,
       },
     });
 

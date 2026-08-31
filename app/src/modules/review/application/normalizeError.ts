@@ -24,8 +24,6 @@ export function normalizeAgentReviewError(cause: unknown): AgentReviewError {
         agent: "claude",
         code: isReviewErrorCode(candidate.code) ? candidate.code : "internal",
         message: candidate.message,
-        usage: candidate.usage ?? null,
-        debug: candidate.debug ?? null,
       };
     }
   }
@@ -33,7 +31,5 @@ export function normalizeAgentReviewError(cause: unknown): AgentReviewError {
     agent: "claude",
     code: "internal",
     message: cause instanceof Error ? cause.message : String(cause),
-    usage: null,
-    debug: null,
   };
 }

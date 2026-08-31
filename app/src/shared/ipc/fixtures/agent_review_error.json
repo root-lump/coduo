@@ -1,7 +1,0 @@
-{
-  "agent": "codex",
-  "code": "not_authenticated",
-  "message": "Codexにログインしてください",
-  "usage": null,
-  "debug": null
-}

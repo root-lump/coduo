@@ -9,7 +9,7 @@
     "typecheck": "tsc -b",
     "test": "vitest",
     "test:run": "vitest run",
-    "template": "vite build && node scripts/generate-languages.mjs && node -e \"const fs=require('fs');fs.copyFileSync('dist/index.html','../skills/create-code-viewer/assets/template.html')\""
+    "template": "vite build && node scripts/generate-languages.mjs && node -e \"const fs=require('fs');fs.copyFileSync('dist/index.html','../skills/create-code-tour/assets/template.html')\""
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
