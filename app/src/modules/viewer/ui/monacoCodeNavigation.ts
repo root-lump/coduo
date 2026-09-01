@@ -6,11 +6,12 @@ import type { IRange, languages, Uri } from "monaco-editor";
 import type { CodeTarget } from "../../review";
 import type { FileContent } from "../../workspace";
 import {
-  buildDefinitionIndex,
   definitionsFor,
+  loadCodeNavigationIndex,
   referencesFor,
   type SymbolLocation,
 } from "../codeNavigation";
+import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
 import { languageFromPath } from "../language";
 import { monaco } from "../monacoEnvironment";
 
@@ -18,6 +19,7 @@ type Disposable = { dispose(): void };
 
 type InstallArgs = {
   files: FileContent[];
+  symbolIndex: SymbolIndex;
   onOpenLocation(target: CodeTarget): void;
 };
 
@@ -38,6 +40,7 @@ function rangeOf(location: SymbolLocation): IRange {
 
 export function installCodeNavigation({
   files,
+  symbolIndex,
   onOpenLocation,
 }: InstallArgs): Disposable {
   const pathByUri = new Map<string, string>();
@@ -56,7 +59,7 @@ export function installCodeNavigation({
     }
   }
 
-  const index = buildDefinitionIndex(files);
+  const index = loadCodeNavigationIndex(symbolIndex);
   const wordAt = (
     model: Parameters<languages.DefinitionProvider["provideDefinition"]>[0],
     position: Parameters<languages.DefinitionProvider["provideDefinition"]>[1],
@@ -68,10 +71,34 @@ export function installCodeNavigation({
       if (!word) {
         return [];
       }
-      return definitionsFor(index, word).map((location) => ({
-        uri: uriFor(location.path),
-        range: rangeOf(location),
-      }));
+      const definitions = definitionsFor(index, word);
+      if (definitions.length > 0) {
+        return definitions.map((location) => ({
+          uri: uriFor(location.path),
+          range: rangeOf(location),
+        }));
+      }
+      // 宣言が無くても参照が複数あるなら、ホバー位置自身を唯一の定義として返す。
+      // Monaco は定義が現在位置と一致するとき参照 peek を開くので、Cmd+ホバーで
+      // 下線が出て「Cmd+クリックで何か起きる」ことが見た目で分かる。
+      if (referencesFor(index, word).length < 2) {
+        return [];
+      }
+      const wordRange = model.getWordAtPosition(position);
+      if (!wordRange) {
+        return [];
+      }
+      return [
+        {
+          uri: model.uri,
+          range: {
+            startLineNumber: position.lineNumber,
+            startColumn: wordRange.startColumn,
+            endLineNumber: position.lineNumber,
+            endColumn: wordRange.endColumn,
+          },
+        },
+      ];
     },
   });
 
@@ -81,7 +108,7 @@ export function installCodeNavigation({
       if (!word) {
         return [];
       }
-      return referencesFor(files, word).map((location) => ({
+      return referencesFor(index, word).map((location) => ({
         uri: uriFor(location.path),
         range: rangeOf(location),
       }));

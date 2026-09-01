@@ -171,6 +171,7 @@ function App({ services, source, initialMode }: AppProps) {
                 focusToken={review.focusToken}
                 isLoading={workspace.isLoadingFile}
                 navigationFiles={derived.navigationFiles}
+                symbolIndex={derived.symbolIndex}
                 onOpenLocation={actions.jumpToLocation}
                 jumpTarget={derived.jumpTarget}
                 jumpToken={derived.jumpToken}

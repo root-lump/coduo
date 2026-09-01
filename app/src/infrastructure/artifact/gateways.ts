@@ -52,6 +52,9 @@ export function createSnapshotWorkspaceGateway(
       const paths = Object.keys(payload.fileContents).sort();
       return paths.map((path) => structuredClone(payload.fileContents[path]));
     },
+    async loadSymbolIndex() {
+      return payload.symbolIndex ? structuredClone(payload.symbolIndex) : null;
+    },
   };
 }
 

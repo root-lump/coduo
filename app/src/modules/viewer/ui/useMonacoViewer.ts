@@ -6,6 +6,7 @@ import type { editor } from "monaco-editor";
 import type { OnMount } from "@monaco-editor/react";
 import type { CodeAnnotation, CodeTarget } from "../../review";
 import type { ChangedLine } from "../../workspace";
+import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
 import type { AnnotationAnchor } from "../codeAnnotations";
 import { annotationAtPosition } from "../codeAnnotations";
 import {
@@ -45,6 +46,7 @@ type UseMonacoViewerArgs = {
   focus?: CodeTarget;
   focusToken: number;
   navigationFiles: FileContent[];
+  symbolIndex: SymbolIndex | null;
   onOpenLocation(target: CodeTarget): void;
   jumpTarget?: CodeTarget;
   jumpToken: number;
@@ -57,6 +59,7 @@ export function useMonacoViewer({
   focus,
   focusToken,
   navigationFiles,
+  symbolIndex,
   onOpenLocation,
   jumpTarget,
   jumpToken,
@@ -225,17 +228,18 @@ export function useMonacoViewer({
   };
 
   // コードナビゲーションは Monaco 全体への登録なので、エディタ mount 後に
-  // ファイル一覧が揃った時点で 1 回だけ install する。
+  // ファイル一覧と索引が揃った時点で 1 回だけ install する。
   useEffect(() => {
-    if (!isEditorMounted || navigationFiles.length === 0) {
+    if (!isEditorMounted || navigationFiles.length === 0 || !symbolIndex) {
       return;
     }
     const navigation = installCodeNavigation({
       files: navigationFiles,
+      symbolIndex,
       onOpenLocation: (target) => onOpenLocationRef.current(target),
     });
     return () => navigation.dispose();
-  }, [isEditorMounted, navigationFiles]);
+  }, [isEditorMounted, navigationFiles, symbolIndex]);
 
   // 定義ジャンプで別ファイルを開いたら、対象位置まで表示を移す
   // （review の focusDecoration は付けず、選択と表示位置だけを移す）。

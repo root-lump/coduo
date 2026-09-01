@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CodeAnnotationLayer } from "./CodeAnnotationLayer";
 import type { CodeAnnotation, CodeTarget } from "../../review";
 import type { ChangedLine, FileContent } from "../../workspace";
+import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
 import { languageFromPath } from "../language";
 import { unavailableMessageFor } from "../unavailableMessage";
 import { useMonacoViewer } from "./useMonacoViewer";
@@ -17,6 +18,7 @@ type CodeViewerProps = {
   focusToken: number;
   isLoading: boolean;
   navigationFiles: FileContent[];
+  symbolIndex: SymbolIndex | null;
   onOpenLocation(target: CodeTarget): void;
   jumpTarget?: CodeTarget;
   jumpToken: number;
@@ -48,6 +50,7 @@ export function CodeViewer({
   focusToken,
   isLoading,
   navigationFiles,
+  symbolIndex,
   onOpenLocation,
   jumpTarget,
   jumpToken,
@@ -66,6 +69,7 @@ export function CodeViewer({
     focus,
     focusToken,
     navigationFiles,
+    symbolIndex,
     onOpenLocation,
     jumpTarget,
     jumpToken,

@@ -11,11 +11,14 @@ import directorySelection from "../../shared/snapshot/samples/workspace_selectio
 import fileContent from "../../shared/snapshot/samples/file_content.json";
 import changedLines from "../../shared/snapshot/samples/changed_lines.json";
 import reviewResult from "../../shared/snapshot/samples/agent_review_result.json";
+import symbolIndexSample from "../../shared/snapshot/samples/symbol_index.json";
+import type { SymbolIndex } from "../../shared/snapshot/SymbolIndex";
 import type { CoduoSnapshotPayload } from "./payload";
 
 const workspace = directorySelection as unknown as WorkspaceSelection;
 const libRs = fileContent as FileContent;
 const tour = reviewResult as unknown as AgentReviewResult;
+const symbolIndex = symbolIndexSample as unknown as SymbolIndex;
 
 export const devSnapshot: CoduoSnapshotPayload = {
   version: 1,
@@ -36,4 +39,5 @@ export const devSnapshot: CoduoSnapshotPayload = {
     pull_request: tour,
     [`file:${libRs.path}`]: tour,
   },
+  symbolIndex,
 };

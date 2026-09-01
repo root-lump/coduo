@@ -3,8 +3,11 @@
 // Monaco に依存しない純関数・型だけ。CodeViewer（Monaco 依存）は
 // app 層が "./ui/CodeViewer" を React.lazy で読み込む。
 export {
-  buildDefinitionIndex,
   definitionsFor,
+  loadCodeNavigationIndex,
   referencesFor,
 } from "./codeNavigation";
-export type { DefinitionIndex, SymbolLocation } from "./codeNavigation";
+export type {
+  CodeNavigationIndex,
+  SymbolLocation,
+} from "./codeNavigation";
