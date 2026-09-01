@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # node と pnpm のバージョンは mise.toml が正本。CI でも同じ固定を再現する。
+      - uses: jdx/mise-action@v2
+        with:
+          version: 2026.1.2
+
+      - name: 依存を導入する
+        working-directory: app
+        run: mise exec -- pnpm install --frozen-lockfile
+
+      - name: 型検査
+        working-directory: app
+        run: mise exec -- pnpm typecheck
+
+      - name: テスト
+        working-directory: app
+        run: mise exec -- pnpm test:run
+
+      # 生成物（template.html / assets/languages / assets/tree-sitter）が
+      # ソースと一致していることを見る。CLAUDE.md の「ソースを変えたら再生成して
+      # コミットする」という約束事を機械的に守らせるための検査。
+      - name: 生成物を再生成する
+        working-directory: app
+        run: |
+          mise exec -- pnpm template
+          node scripts/fetch-tree-sitter.mjs
+
+      - name: 生成物の同期を確認する
+        working-directory: app
+        run: node scripts/check-generated-sync.mjs
