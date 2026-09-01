@@ -2,6 +2,10 @@
 
 GitHub リポジトリ / Pull Request、またはローカルディレクトリから、コードビューアと **Code Tour** の付いた Claude Artifact を生成する Claude Code プラグインです。Code Tour は、Claude が生成時に書いた説明ステップとコード注釈の列で、Artifact を開くと自動で始まります。
 
+![Coduo が生成した Artifact。左に変更ファイル一覧、中央に差分ガター付きのコード、右に Code Tour のステップが並んでいる。](docs/images/viewer.png)
+
+このリポジトリ自身の Pull Request を対象に生成したものです。左が変更ファイルの一覧、中央が変更行のガターとコード注釈の付いたエディタ、右が Code Tour のステップです。
+
 生成される Artifact は単一の HTML ファイルで、対象の固定 revision（commit SHA）のソース全文を埋め込んでいます。表示に必要なデータをすべて埋め込んでいるため、実行時に GitHub やネットワークへはアクセスしません。
 
 閲覧者は次のことができます。
