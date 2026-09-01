@@ -19,7 +19,7 @@ jobs:
 
       - uses: jdx/mise-action@v2
         with:
-          version: 2026.1.2
+          version: 2026.8.16
 
       - name: 依存を導入する
         working-directory: app
