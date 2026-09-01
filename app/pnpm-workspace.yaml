@@ -1,0 +1,15 @@
+# tree-sitter の文法パッケージは native binding をビルドせずに使う。
+# 収集スクリプトが読むのは各パッケージが同梱する wasm だけで、node 用の
+# native binding は不要なため（ビルドを許すと導入時間が延びるだけになる）。
+allowBuilds:
+  tree-sitter-c: false
+  tree-sitter-c-sharp: false
+  tree-sitter-cpp: false
+  tree-sitter-go: false
+  tree-sitter-java: false
+  tree-sitter-javascript: false
+  tree-sitter-php: false
+  tree-sitter-python: false
+  tree-sitter-ruby: false
+  tree-sitter-rust: false
+  tree-sitter-typescript: false
