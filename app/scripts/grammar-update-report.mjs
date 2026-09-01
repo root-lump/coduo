@@ -41,7 +41,7 @@ lines.push(
   "- `pnpm test:run`（fixture による索引検証を含む）",
   "- `pnpm typecheck`",
   "",
-  "🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+  "この PR は update-grammars ワークフローが自動生成しています。",
 );
 
 process.stdout.write(`${lines.join("\n")}\n`);

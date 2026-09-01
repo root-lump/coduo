@@ -14,6 +14,30 @@ import { pathToFileURL } from "node:url";
 /** 索引の既定上限。超えたら出現位置を落として宣言だけにする。 */
 export const DEFAULT_INDEX_BUDGET_BYTES = 1_500_000;
 
+/** 索引を作れなかったときに payload へ載せる空の索引。 */
+export function emptySymbolIndex() {
+  return {
+    degraded: false,
+    generator: { grammars: {}, webTreeSitter: null },
+    kinds: [],
+    paths: [],
+    symbols: [],
+  };
+}
+
+/** emptySymbolIndex に対応する統計。警告だけを積んで summary に出す。 */
+export function emptySymbolIndexStats() {
+  return {
+    indexBytes: 0,
+    degraded: false,
+    declarations: 0,
+    names: 0,
+    occurrences: 0,
+    byLanguage: {},
+    warnings: [],
+  };
+}
+
 // 文法を同梱していない言語向けの宣言パターン。各パターンはシンボル名を capture group 1
 // に持ち、名前がマッチ全体の末尾に来るように書く（名前の列位置を match 末尾からの
 // 逆算で求めるため）。tree-sitter 対応言語はこの表に載せない。

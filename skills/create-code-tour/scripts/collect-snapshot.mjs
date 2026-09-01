@@ -67,7 +67,11 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildSymbolIndex } from "./symbol-index.mjs";
+import {
+  buildSymbolIndex,
+  emptySymbolIndex,
+  emptySymbolIndexStats,
+} from "./symbol-index.mjs";
 
 const MAX_TOTAL_SOURCE_BYTES = 8_000_000; // 合意規模(1.5MB)の余裕枠。超過は fail closed
 // --fill-budget の既定値。埋め込み後の HTML には別途 16MB の制限があり、
@@ -1103,10 +1107,18 @@ if (result.secrets.length > 0) {
 // 索引は本文の収集がすべて終わってから 1 度だけ作る（3 モードで共通）。
 // 生成に失敗しても収集は止めない（索引はビューアの補助機能であり、
 // fail closed が守ろうとしている「不完全なコードの複製を作らない」とは性質が違う）。
-const { index: symbolIndex, stats: symbolIndexStats } = await buildSymbolIndex(
-  result.payload.fileContents,
-  { assetsDir: fileURLToPath(new URL("../assets/tree-sitter", import.meta.url)) },
-);
+// buildSymbolIndex は既知の失敗を内部で警告に落とすが、想定外の例外（assets の
+// 破損など）でも収集を巻き込まないよう、呼び出し側でも空の索引に倒す。
+let symbolIndex = emptySymbolIndex();
+let symbolIndexStats = emptySymbolIndexStats();
+try {
+  ({ index: symbolIndex, stats: symbolIndexStats } = await buildSymbolIndex(
+    result.payload.fileContents,
+    { assetsDir: fileURLToPath(new URL("../assets/tree-sitter", import.meta.url)) },
+  ));
+} catch (error) {
+  symbolIndexStats.warnings.push(`索引を生成できませんでした: ${error.message}`);
+}
 result.payload.symbolIndex = symbolIndex;
 
 const out = flag("--out");
