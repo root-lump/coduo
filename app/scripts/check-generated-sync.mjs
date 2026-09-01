@@ -10,10 +10,15 @@
 import { execFileSync } from "node:child_process";
 import { gunzipSync } from "node:zlib";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 function git(...args) {
   return execFileSync("git", args, { maxBuffer: 256 * 1024 * 1024 });
 }
+
+// git が返すパスはリポジトリルート基準。このスクリプトは app/ から呼ばれるため、
+// ファイルを開く前にルートへ解決する。
+const root = String(git("rev-parse", "--show-toplevel")).trim();
 
 const changed = String(git("status", "--porcelain"))
   .split("\n")
@@ -28,7 +33,7 @@ for (const path of changed) {
   }
   try {
     const committed = gunzipSync(git("show", `HEAD:${path}`));
-    const current = gunzipSync(readFileSync(path));
+    const current = gunzipSync(readFileSync(join(root, path)));
     if (!committed.equals(current)) {
       outOfSync.push(`${path}（展開後の内容が異なる）`);
     }
