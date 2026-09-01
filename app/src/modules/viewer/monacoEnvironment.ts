@@ -42,6 +42,10 @@ import "monaco-editor/editor/contrib/contextmenu/browser/contextmenu.js";
 // この contribution にある。入れないと差分が計算されても色が付かない。
 // 公式フル構成 editor.main.js が読んでいるものと同じ。
 import "monaco-editor/editor/browser/widget/diffEditor/diffEditor.contribution.js";
+// アイコンのフォント（codicon）。editor core は @font-face を持つ CSS を
+// 読み込まないため、入れないと差分の余白やピーク表示のアイコンが豆腐になる。
+// 別名の解決は vite.config.ts を参照。
+import "monaco-codicon.css";
 
 type MonacoGlobal = typeof globalThis & {
   MonacoEnvironment?: {

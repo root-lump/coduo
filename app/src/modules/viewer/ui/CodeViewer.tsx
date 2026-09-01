@@ -174,6 +174,9 @@ export function CodeViewer({
               // 変更のない範囲は畳んで、変わった箇所だけを追えるようにする。
               hideUnchangedRegions: { enabled: true },
               renderOverviewRuler: true,
+              // 読み取り専用なので、行余白の revert アイコンと余白メニューは出さない。
+              renderMarginRevertIcon: false,
+              renderGutterMenu: false,
               minimap: { enabled: false },
             }}
           />
