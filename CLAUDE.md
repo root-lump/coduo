@@ -27,6 +27,7 @@ pnpm は直接ではなく `mise exec --` 経由で呼ぶ（node と pnpm の両
 ## 設計上の決まり
 
 - template に焼き込む言語文法は `app/src/modules/viewer/monacoEnvironment.ts` の register import が正本。それ以外の言語は embed 時に `assets/languages/` から payload が使う分だけ補完される。新しい言語対応で template に import を足す前に、この補完で足りないかを確認する
+- Monaco は editor core のみの構成で、contrib 機能は `monacoEnvironment.ts` で使う分だけ side-effect import する。パスは `monaco-editor/editor/contrib/...` 形式（`monaco-editor/contrib/...` は解決されない）。import の組み合わせは `monaco-editor/esm/vs/editor/editor.main.js` を正とする（contrib 単体では standalone 向け登録が欠けることがある。例: 参照 peek は `referencesController.js` ではなく `standalone/browser/referenceSearch/standaloneReferenceSearch.js`）。焼き込めたかは、ビルド後の template に contrib 固有の文字列（例: "No definition found"）が含まれるかで確認する（editor core にはオプション定義由来で "Go to Definition" 等の文字列が contrib 無しでも現れるため、機能名の文字列一致だけでは同梱の証拠にならない）
 - collector の収集モードは `--repo` / `--pr` / `--diff`（ローカルディレクトリの作業ツリー + 未コミット変更）の 3 つ。本文取得はローカル git object 経由が既定（`--from-local` → cwd 周辺のクローン → 一時クローンの順に収集元を決める）。GitHub API は PR メタデータ専用で、tree / blob を既定経路で呼ばない。既存クローンからは `git ls-tree` / `git cat-file` で読み、checkout や fetch --depth で利用者のリポジトリの状態を変えない
 - collector の fail closed（容量超過 8MB、secret 検出、`--from-api` 時の tree truncation、`--from-local` の remote 不一致）を独断で回避する変更をしない。縮小・除外は `--include` / `--exclude-glob` / `--deny-content` / `--fill-budget` によるユーザー選択で行う設計
 - 収集スクリプトの共有ヘルパーは `skills/create-code-tour/scripts/lib.mjs` に置き、各スクリプトへ複製しない
