@@ -16,6 +16,10 @@ type CodeViewerProps = {
   focus?: CodeTarget;
   focusToken: number;
   isLoading: boolean;
+  navigationFiles: FileContent[];
+  onOpenLocation(target: CodeTarget): void;
+  jumpTarget?: CodeTarget;
+  jumpToken: number;
 };
 
 type AnnotationRenderState = {
@@ -43,6 +47,10 @@ export function CodeViewer({
   focus,
   focusToken,
   isLoading,
+  navigationFiles,
+  onOpenLocation,
+  jumpTarget,
+  jumpToken,
 }: CodeViewerProps) {
   const [dismissedFocusToken, setDismissedFocusToken] = useState<number>();
   const {
@@ -57,6 +65,10 @@ export function CodeViewer({
     filePath: file?.path,
     focus,
     focusToken,
+    navigationFiles,
+    onOpenLocation,
+    jumpTarget,
+    jumpToken,
   });
 
   if (!file) {

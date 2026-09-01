@@ -1,9 +1,10 @@
 // アプリ全体のオーケストレーション。
 // module 間をまたぐ配線（snapshot の自動展開・Tour の自動読み込み・
 // レビューのフォーカス追従）を持ち、App.tsx はこの controller の結果を描画するだけにする。
-import { useEffect, useRef } from "react";
-import type { ReviewMode, ReviewRequest } from "../modules/review";
+import { useEffect, useRef, useState } from "react";
+import type { CodeTarget, ReviewMode, ReviewRequest } from "../modules/review";
 import { useAgentReview, useReviewController } from "../modules/review";
+import type { FileContent } from "../modules/workspace";
 import { useWorkspace } from "../modules/workspace";
 import { usePanelSizing } from "../modules/layout";
 import { useZoom } from "../modules/zoom";
@@ -64,6 +65,39 @@ export function useAppController(
   const selectFileManually = (path: string) => {
     review.markExploring();
     void workspace.openFile(path);
+  };
+
+  // コードナビゲーション用に readable な全ファイルを一度だけ読む。
+  // 取得失敗時は空のままにし、ナビゲーションが無効になるだけで画面は壊さない。
+  const [navigationFiles, setNavigationFiles] = useState<FileContent[]>([]);
+  const hasSnapshot = Boolean(snapshot);
+  useEffect(() => {
+    if (!hasSnapshot) {
+      return;
+    }
+    let disposed = false;
+    setNavigationFiles([]);
+    services.workspaceGateway.listFileContents().then(
+      (files) => {
+        if (!disposed) {
+          setNavigationFiles(files);
+        }
+      },
+      () => undefined,
+    );
+    return () => {
+      disposed = true;
+    };
+  }, [hasSnapshot, services.workspaceGateway, workspace.selectionId]);
+
+  // 定義ジャンプによる別ファイルへの遷移。手動選択と同じく「探索中」へ移す。
+  const [jump, setJump] = useState<{ target?: CodeTarget; token: number }>({
+    token: 0,
+  });
+  const jumpToLocation = (target: CodeTarget) => {
+    review.markExploring();
+    void workspace.openFile(target.file);
+    setJump((current) => ({ target, token: current.token + 1 }));
   };
 
   const generate = (mode: ReviewMode) => {
@@ -127,12 +161,16 @@ export function useAppController(
     actions: {
       retry,
       selectFileManually,
+      jumpToLocation,
     },
     derived: {
       activeChange,
       activeFocus,
       codeAnnotations,
       hasReviewNavigation,
+      navigationFiles,
+      jumpTarget: jump.target,
+      jumpToken: jump.token,
     },
   };
 }

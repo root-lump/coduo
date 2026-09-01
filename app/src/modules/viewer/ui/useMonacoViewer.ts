@@ -15,6 +15,8 @@ import {
   gitDecorations,
 } from "../decorations";
 import { monaco } from "../monacoEnvironment";
+import type { FileContent } from "../../workspace";
+import { installCodeNavigation } from "./monacoCodeNavigation";
 
 type Disposable = { dispose(): void };
 
@@ -42,6 +44,10 @@ type UseMonacoViewerArgs = {
   filePath?: string;
   focus?: CodeTarget;
   focusToken: number;
+  navigationFiles: FileContent[];
+  onOpenLocation(target: CodeTarget): void;
+  jumpTarget?: CodeTarget;
+  jumpToken: number;
 };
 
 export function useMonacoViewer({
@@ -50,6 +56,10 @@ export function useMonacoViewer({
   filePath,
   focus,
   focusToken,
+  navigationFiles,
+  onOpenLocation,
+  jumpTarget,
+  jumpToken,
 }: UseMonacoViewerArgs) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | undefined>(undefined);
   const editorListenersRef = useRef<Disposable | undefined>(undefined);
@@ -68,9 +78,12 @@ export function useMonacoViewer({
   const [anchors, setAnchors] = useState<AnnotationAnchor[]>([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string>();
   const [viewport, setViewport] = useState({ height: 0, width: 0 });
+  const [isEditorMounted, setIsEditorMounted] = useState(false);
 
   const annotationsRef = useRef(annotations);
   annotationsRef.current = annotations;
+  const onOpenLocationRef = useRef(onOpenLocation);
+  onOpenLocationRef.current = onOpenLocation;
 
   const updateAnnotationPositions = useCallback(() => {
     const editorInstance = editorRef.current;
@@ -208,7 +221,39 @@ export function useMonacoViewer({
     });
     monaco.editor.setTheme("coduo-dark");
     applyDecorations();
+    setIsEditorMounted(true);
   };
+
+  // コードナビゲーションは Monaco 全体への登録なので、エディタ mount 後に
+  // ファイル一覧が揃った時点で 1 回だけ install する。
+  useEffect(() => {
+    if (!isEditorMounted || navigationFiles.length === 0) {
+      return;
+    }
+    const navigation = installCodeNavigation({
+      files: navigationFiles,
+      onOpenLocation: (target) => onOpenLocationRef.current(target),
+    });
+    return () => navigation.dispose();
+  }, [isEditorMounted, navigationFiles]);
+
+  // 定義ジャンプで別ファイルを開いたら、対象位置まで表示を移す
+  // （review の focusDecoration は付けず、選択と表示位置だけを移す）。
+  useEffect(() => {
+    const editorInstance = editorRef.current;
+    const model = editorInstance?.getModel();
+    if (!editorInstance || !model || !jumpTarget) {
+      return;
+    }
+    if (filePath !== jumpTarget.file) {
+      return;
+    }
+    const range = focusRange(jumpTarget, model.getLineCount());
+    if (range) {
+      editorInstance.revealRangeInCenter(range, monaco.editor.ScrollType.Smooth);
+      editorInstance.setSelection(range);
+    }
+  }, [filePath, jumpTarget, jumpToken]);
 
   useEffect(() => {
     setSelectedAnnotationId(annotations[0]?.id);

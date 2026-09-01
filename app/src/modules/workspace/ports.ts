@@ -6,4 +6,6 @@ export interface WorkspaceGateway {
   selectFile(): Promise<WorkspaceSelection | null>;
   readFile(path: string): Promise<FileContent>;
   loadChangedLines(path: string): Promise<ChangedLine[]>;
+  /** readable な全ファイルの本文。コードナビゲーションのインデックス構築に使う。 */
+  listFileContents(): Promise<FileContent[]>;
 }
