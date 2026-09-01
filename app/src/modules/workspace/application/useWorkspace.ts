@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ChangedLine,
   FileContent,
@@ -7,6 +7,7 @@ import type {
   WorkspaceSelection,
 } from "../domain";
 import type { WorkspaceGateway } from "../ports";
+import { reconstructBaseText } from "../reconstructBase";
 import { FileRequestCoordinator } from "./fileRequestCoordinator";
 
 /** アクティブファイルの読み込み状態。 */
@@ -79,6 +80,11 @@ export function useWorkspace(workspaceGateway: WorkspaceGateway) {
   const [changedLinesByPath, setChangedLinesByPath] = useState<
     Record<string, ChangedLine[]>
   >({});
+  // 差分表示用の patch も同じく遅延取得する。未取得と「patch 無し」を
+  // 区別するため、値は null（無し）で埋める。
+  const [patchByPath, setPatchByPath] = useState<Record<string, string | null>>(
+    {},
+  );
   const requests = useRef(new FileRequestCoordinator<FileContent>());
 
   const snapshot =
@@ -161,6 +167,7 @@ export function useWorkspace(workspaceGateway: WorkspaceGateway) {
   const applySelection = useCallback((selection: WorkspaceSelection) => {
     requests.current.clear();
     setChangedLinesByPath({});
+    setPatchByPath({});
     setSelectionId((current) => current + 1);
 
     let activeFile: FileLoadState = { phase: "unloaded" };
@@ -252,10 +259,41 @@ export function useWorkspace(workspaceGateway: WorkspaceGateway) {
         // 変更行はビューアの補助表示なので、取得失敗で画面を壊さない。
       },
     );
+    void workspaceGateway.loadPatch(activePath).then(
+      (patch) => {
+        if (!disposed) {
+          setPatchByPath((current) => ({ ...current, [activePath]: patch }));
+        }
+      },
+      () => {
+        if (!disposed) {
+          setPatchByPath((current) => ({ ...current, [activePath]: null }));
+        }
+      },
+    );
     return () => {
       disposed = true;
     };
   }, [activePath, activeIsChanged, changedLinesByPath, workspaceGateway]);
+
+  // 差分表示に使う変更前の全文。追加・追跡外のファイルは patch を持たず
+  // 変更前が空、patch が無いか逆適用できないファイルは undefined
+  // （差分表示を出さない）。
+  const activeChangeStatus = activePath
+    ? snapshot?.changes.find((change) => change.path === activePath)?.status
+    : undefined;
+  const activePatch = activePath ? patchByPath[activePath] : undefined;
+  const activeContent = activeFile?.unavailableReason
+    ? undefined
+    : activeFile?.content;
+  const activeBaseText = useMemo(() => {
+    if (activeContent === undefined) return undefined;
+    if (activeChangeStatus === "added" || activeChangeStatus === "untracked") {
+      return "";
+    }
+    if (!activePatch) return undefined;
+    return reconstructBaseText(activeContent, activePatch) ?? undefined;
+  }, [activeChangeStatus, activeContent, activePatch]);
 
   const dismissError = useCallback(() => setError(undefined), []);
 
@@ -266,6 +304,7 @@ export function useWorkspace(workspaceGateway: WorkspaceGateway) {
     activeChangedLines: activePath
       ? (changedLinesByPath[activePath] ?? [])
       : [],
+    activeBaseText,
     activeFile,
     dismissError,
     error,

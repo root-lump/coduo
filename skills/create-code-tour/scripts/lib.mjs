@@ -109,6 +109,19 @@ export function scanSecrets(path, text) {
   return hits;
 }
 
+/**
+ * unified diff から hunk 部分だけを取り出す（差分ヘッダを落とす）。
+ * viewer は head 全文にこれを逆適用して base を復元するため、hunk が
+ * 揃っていない patch（GitHub API が大きいファイルで patch を返さない等）は null。
+ */
+export function hunksFromPatch(patch) {
+  if (!patch) return null;
+  const start = patch.startsWith("@@") ? 0 : patch.indexOf("\n@@");
+  if (start === -1) return null;
+  const hunks = start === 0 ? patch : patch.slice(start + 1);
+  return hunks.length > 0 ? hunks : null;
+}
+
 /** unified diff の patch から head 側の ChangedLine[] を得る。 */
 export function changedLinesFromPatch(patch) {
   if (!patch) return [];

@@ -44,6 +44,12 @@ export type CoduoSnapshotPayload = {
   fileContents: Record<string, FileContent>;
   /** path → 変更行。無いファイルは変更なし扱い。 */
   changedLines: Record<string, ChangedLine[]>;
+  /**
+   * path → 変更前の復元に使う unified diff の hunk 部分。
+   * 変更後の全文へ逆適用して差分表示に使う（変更前の本文は載せない）。
+   * 古い payload には無く、その場合は差分表示を出さない。
+   */
+  patches?: Record<string, string>;
   tours: Record<TourKey, AgentReviewResult>;
   /** コードナビゲーション用の宣言索引。古い payload には無い。 */
   symbolIndex?: SymbolIndex;

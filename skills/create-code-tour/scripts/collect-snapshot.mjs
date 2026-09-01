@@ -52,6 +52,7 @@ import {
   classifyReadability,
   fail,
   fileContent,
+  hunksFromPatch,
   repositoryFile,
   scanSecrets,
   stableStringify,
@@ -554,7 +555,7 @@ function buildRanker(entries, changedPaths, canScanAll) {
  * 上限超過の fail closed 時に、ユーザーが範囲を選べるだけの判断材料
  * （トップレベル別の合計と最大ファイル）を出力する。
  */
-function failWithSizeBreakdown(candidates, plannedBytes) {
+function failWithSizeBreakdown(candidates, plannedBytes, reservedBytes = 0) {
   const byTopLevel = new Map();
   for (const entry of candidates) {
     const slash = entry.path.indexOf("/");
@@ -566,6 +567,9 @@ function failWithSizeBreakdown(candidates, plannedBytes) {
   fail(
     [
       `readable ファイルの合計が上限 ${MAX_TOTAL_SOURCE_BYTES} bytes を超えました（実測 ${plannedBytes} bytes / ${candidates.length} ファイル）。`,
+      ...(reservedBytes > 0
+        ? [`うち差分表示用の patch が ${reservedBytes} bytes。`]
+        : []),
       "内訳（トップレベル別・上位）:",
       ...dirs.map(([dir, size]) => `  ${String(size).padStart(10)}  ${dir}`),
       "最大のファイル:",
@@ -584,8 +588,12 @@ function failWithSizeBreakdown(candidates, plannedBytes) {
  * fill 有り（--fill-budget）: fail closed の代わりに tier 昇順 → サイズ昇順で
  * 予算いっぱいまで詰める。予算に入らないファイルは飛ばして次へ進む
  * （大きい 1 件で打ち切らない）。同じ予算でできるだけ多くの実体が載る。
+ *
+ * reservedBytes は本文以外に payload へ載せる分（差分表示用の patch）。
+ * fill 有りのときは呼び出し側が予算から差し引くので、ここでは fail closed の
+ * 判定にだけ使う。
  */
-function collectFromEntries(entries, scope, fill) {
+function collectFromEntries(entries, scope, fill, reservedBytes = 0) {
   entries.sort((a, b) => a.path.localeCompare(b.path));
   const candidates = entries.filter(
     (entry) =>
@@ -601,9 +609,10 @@ function collectFromEntries(entries, scope, fill) {
         a.path.localeCompare(b.path),
     );
   } else {
-    const plannedBytes = candidates.reduce((sum, entry) => sum + entry.size, 0);
+    const plannedBytes =
+      candidates.reduce((sum, entry) => sum + entry.size, 0) + reservedBytes;
     if (plannedBytes > MAX_TOTAL_SOURCE_BYTES) {
-      failWithSizeBreakdown(candidates, plannedBytes);
+      failWithSizeBreakdown(candidates, plannedBytes, reservedBytes);
     }
   }
   const fileContents = {};
@@ -648,6 +657,24 @@ function collectFromEntries(entries, scope, fill) {
     return repositoryFile(entry.path, entry.size, readability);
   });
   return { files, fileContents, secrets, totalBytes: total, tierStats };
+}
+
+/** 本文を収集できたファイルの patch だけを残す（パス昇順を保つ）。 */
+function onlyCollected(patches, fileContents) {
+  const kept = {};
+  for (const path of Object.keys(patches).sort()) {
+    if (fileContents[path]) kept[path] = patches[path];
+  }
+  return kept;
+}
+
+/** payload に載る patch の合計バイト数（fill 予算の先取り分）。 */
+function patchBytesOf(patches) {
+  return Object.entries(patches).reduce(
+    (sum, [path, hunks]) =>
+      sum + Buffer.byteLength(path, "utf8") + Buffer.byteLength(hunks, "utf8"),
+    0,
+  );
 }
 
 function makeFill(fillBudget, entries, changedPaths, canScanAll) {
@@ -762,12 +789,27 @@ function buildPrPayload(owner, repo, number, scope, fillBudget, options) {
   const changedPaths = new Set(
     prFiles.filter((file) => file.status !== "removed").map((file) => file.filename),
   );
+  // 差分表示用の patch は本文より先に確定させ、その分だけ穴埋めの予算を減らす
+  // （減るのは tier の低い＝変更と関係の薄いファイルから）。
+  const patches = {};
+  for (const file of prFiles.sort((a, b) => a.filename.localeCompare(b.filename))) {
+    if (file.status === "removed") continue; // 削除ファイルは viewer で開けない
+    const hunks = hunksFromPatch(file.patch);
+    if (hunks) patches[file.filename] = hunks;
+  }
+  const patchBytes = patchBytesOf(patches);
   const { files, fileContents, secrets, totalBytes, tierStats } =
     collectFromEntries(
       entries,
       scope,
       // 逆方向 import 解析（呼び出し元）は blob 取得が安価なローカル収集のときだけ
-      makeFill(fillBudget, entries, changedPaths, !options.fromApi),
+      makeFill(
+        fillBudget === undefined ? undefined : fillBudget - patchBytes,
+        entries,
+        changedPaths,
+        !options.fromApi,
+      ),
+      patchBytes,
     );
   const statusMap = {
     added: "added",
@@ -800,6 +842,8 @@ function buildPrPayload(owner, repo, number, scope, fillBudget, options) {
     }
   }
   files.sort((a, b) => a.path.localeCompare(b.path));
+  // 本文を持たないファイルの patch は逆適用先が無く使えないので落とす。
+  const collectedPatches = onlyCollected(patches, fileContents);
   return {
     payload: {
       version: 1,
@@ -824,10 +868,12 @@ function buildPrPayload(owner, repo, number, scope, fillBudget, options) {
       },
       fileContents,
       changedLines,
+      patches: collectedPatches,
       tours: {},
     },
     secrets,
     totalBytes,
+    patchBytes: patchBytesOf(collectedPatches),
     tierStats,
     isPrivate: Boolean(pr.base.repo?.private),
     visibility: pr.base.repo?.private ? "private" : "public",
@@ -933,10 +979,26 @@ function localStatus(root) {
 }
 
 /**
+ * 変更ファイルごとの hunk を HEAD → working tree（staged + unstaged の合計）で取る。
+ * 追跡外のファイルと HEAD が無い場合は全行が追加なので patch を持たない
+ * （viewer は変更前を空として扱う）。
+ */
+function localPatches(root, changes, hasHead) {
+  const patches = {};
+  if (!hasHead) return patches;
+  for (const change of changes) {
+    if (change.status === "deleted" || change.status === "untracked") continue;
+    const hunks = hunksFromPatch(gitQuiet(root, "diff", "HEAD", "--", change.path));
+    if (hunks) patches[change.path] = hunks;
+  }
+  return patches;
+}
+
+/**
  * 埋め込む本文は working tree の内容なので、変更行も HEAD → working tree
  * （staged + unstaged の合計）で数える。追跡外のファイルは全行が追加。
  */
-function localChangedLines(root, change, fileContents, hasHead) {
+function localChangedLines(change, patches, fileContents, hasHead) {
   if (change.status === "deleted") return [];
   if (change.status === "untracked" || !hasHead) {
     const lineCount = fileContents[change.path]?.lineCount ?? 0;
@@ -945,13 +1007,7 @@ function localChangedLines(root, change, fileContents, hasHead) {
       kind: "added",
     }));
   }
-  const patch = gitQuiet(root, "diff", "HEAD", "--", change.path);
-  if (patch === null) return [];
-  // git diff は差分ヘッダ（--- / +++）を伴うので、最初の hunk から渡す
-  const hunkStart = patch.indexOf("\n@@");
-  return hunkStart === -1
-    ? []
-    : changedLinesFromPatch(patch.slice(hunkStart + 1));
+  return changedLinesFromPatch(patches[change.path]);
 }
 
 /** 追跡外（gitignore 対象は除く）のファイルも収集対象に足す。 */
@@ -986,13 +1042,19 @@ function buildDiffPayload(target, scope, fillBudget) {
   const entries = toReadEntries(
     withUntracked(root, localEntries(root), changes),
   );
+  const hasHead =
+    isGit && gitQuiet(root, "rev-parse", "--verify", "--quiet", "HEAD") !== null;
+  // 差分表示用の patch は本文より先に確定させ、その分だけ穴埋めの予算を減らす
+  // （減るのは tier の低い＝変更と関係の薄いファイルから）。
+  const patches = localPatches(root, changes, hasHead);
+  const patchBytes = patchBytesOf(patches);
   const { files, fileContents, secrets, totalBytes, tierStats } =
     collectFromEntries(
       entries,
       scope,
       // 変更ファイルを最優先に詰める（PR の tier 0 と同じ扱い）
       makeFill(
-        fillBudget,
+        fillBudget === undefined ? undefined : fillBudget - patchBytes,
         entries,
         new Set(
           changes
@@ -1001,16 +1063,17 @@ function buildDiffPayload(target, scope, fillBudget) {
         ),
         true,
       ),
+      patchBytes,
     );
-  const hasHead =
-    isGit && gitQuiet(root, "rev-parse", "--verify", "--quiet", "HEAD") !== null;
   const changedLines = {};
   for (const change of changes) {
-    change.changedLines = localChangedLines(root, change, fileContents, hasHead);
+    change.changedLines = localChangedLines(change, patches, fileContents, hasHead);
     if (change.changedLines.length > 0) {
       changedLines[change.path] = change.changedLines;
     }
   }
+  // 本文を持たないファイルの patch は逆適用先が無く使えないので落とす。
+  const collectedPatches = onlyCollected(patches, fileContents);
   const branch = isGit
     ? (gitQuiet(root, "branch", "--show-current")?.trim() || null)
     : null;
@@ -1037,10 +1100,12 @@ function buildDiffPayload(target, scope, fillBudget) {
       },
       fileContents,
       changedLines,
+      patches: collectedPatches,
       tours: {},
     },
     secrets,
     totalBytes,
+    patchBytes: patchBytesOf(collectedPatches),
     tierStats,
     isPrivate: true,
     visibility: "local",
@@ -1142,6 +1207,10 @@ console.error(
         (file) => file.readability === "not-collected",
       ).length,
       changes: snapshot.changes.length,
+      patches: {
+        files: Object.keys(result.payload.patches ?? {}).length,
+        bytes: result.patchBytes ?? 0,
+      },
       totalSourceBytes: result.totalBytes,
       fillBudgetBytes: fillBudget,
       payloadBytes: json.length,

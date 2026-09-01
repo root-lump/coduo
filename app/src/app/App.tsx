@@ -151,6 +151,28 @@ function App({ services, source, initialMode }: AppProps) {
                   変更行 {workspace.activeChangedLines.length}
                 </span>
               )}
+              {derived.canShowDiff && (
+                <div className="view-mode-switch">
+                  <button
+                    type="button"
+                    className={`view-mode-button${derived.viewMode === "diff" ? " is-active" : ""}`}
+                    onClick={actions.toggleViewMode}
+                    aria-pressed={derived.viewMode === "diff"}
+                  >
+                    <span aria-hidden="true">⇄</span>
+                    変更前と比べる
+                  </button>
+                  {derived.viewMode === "diff" && (
+                    <button
+                      type="button"
+                      className="view-mode-button"
+                      onClick={actions.toggleSideBySide}
+                    >
+                      {derived.renderSideBySide ? "1 画面で見る" : "並べて見る"}
+                    </button>
+                  )}
+                </div>
+              )}
               <span className="read-only-pill">
                 <span aria-hidden="true">◇</span>
                 読み取り専用
@@ -165,8 +187,11 @@ function App({ services, source, initialMode }: AppProps) {
             >
               <CodeViewer
                 annotations={derived.codeAnnotations}
+                baseText={workspace.activeBaseText}
                 file={workspace.activeFile}
                 changedLines={workspace.activeChangedLines}
+                viewMode={derived.viewMode}
+                renderSideBySide={derived.renderSideBySide}
                 focus={derived.activeFocus}
                 focusToken={review.focusToken}
                 isLoading={workspace.isLoadingFile}
