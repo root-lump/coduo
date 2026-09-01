@@ -2,6 +2,7 @@
 // Artifact 生成 Skill（Claude Code 側）が `<script id="coduo-snapshot" type="application/json">`
 // として埋め込む。Runtime は GitHub・network へ一切アクセスしない（Snapshot 方式の絶対条件）。
 import type { AgentReviewResult } from "../../modules/review";
+import type { SymbolIndex } from "../../shared/snapshot/SymbolIndex";
 import type {
   ChangedLine,
   FileContent,
@@ -44,6 +45,8 @@ export type CoduoSnapshotPayload = {
   /** path → 変更行。無いファイルは変更なし扱い。 */
   changedLines: Record<string, ChangedLine[]>;
   tours: Record<TourKey, AgentReviewResult>;
+  /** コードナビゲーション用の宣言索引。古い payload には無い。 */
+  symbolIndex?: SymbolIndex;
 };
 
 export const SNAPSHOT_SCRIPT_ID = "coduo-snapshot";

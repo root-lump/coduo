@@ -50,6 +50,7 @@ export const fakeWorkspaceGateway = {
   readFile: vi.fn<WorkspaceGateway["readFile"]>(),
   loadChangedLines: vi.fn<WorkspaceGateway["loadChangedLines"]>(),
   listFileContents: vi.fn<WorkspaceGateway["listFileContents"]>(),
+  loadSymbolIndex: vi.fn<WorkspaceGateway["loadSymbolIndex"]>(),
 } satisfies WorkspaceGateway;
 
 export const fakeAgentGateway = {
@@ -74,6 +75,7 @@ export function resetFakeGateways() {
   fakeWorkspaceGateway.listFileContents
     .mockReset()
     .mockResolvedValue([fixtures.fileContent]);
+  fakeWorkspaceGateway.loadSymbolIndex.mockReset().mockResolvedValue(null);
   fakeAgentGateway.review.mockReset();
   fakeAgentGateway.cancel.mockReset().mockResolvedValue(undefined);
 }

@@ -1,0 +1,92 @@
+{
+  "runtime": {
+    "package": "web-tree-sitter",
+    "version": "0.27.0",
+    "js": "runtime/web-tree-sitter.js",
+    "wasm": "runtime/web-tree-sitter.wasm.gz"
+  },
+  "grammarByExtension": {
+    "tsx": "tsx"
+  },
+  "grammars": {
+    "go": {
+      "package": "tree-sitter-go",
+      "version": "0.25.0",
+      "wasm": "grammars/go.wasm.gz",
+      "tags": "queries/go.tags.scm",
+      "extra": "queries/go.extra.scm"
+    },
+    "typescript": {
+      "package": "tree-sitter-typescript",
+      "version": "0.23.2",
+      "wasm": "grammars/typescript.wasm.gz",
+      "tags": "queries/typescript.tags.scm",
+      "extra": "queries/typescript.extra.scm",
+      "inheritsTagsFrom": "tree-sitter-javascript@0.25.0"
+    },
+    "tsx": {
+      "package": "tree-sitter-typescript",
+      "version": "0.23.2",
+      "wasm": "grammars/tsx.wasm.gz",
+      "tags": "queries/tsx.tags.scm",
+      "extra": "queries/tsx.extra.scm",
+      "inheritsTagsFrom": "tree-sitter-javascript@0.25.0"
+    },
+    "javascript": {
+      "package": "tree-sitter-javascript",
+      "version": "0.25.0",
+      "wasm": "grammars/javascript.wasm.gz",
+      "tags": "queries/javascript.tags.scm",
+      "extra": "queries/javascript.extra.scm"
+    },
+    "python": {
+      "package": "tree-sitter-python",
+      "version": "0.25.0",
+      "wasm": "grammars/python.wasm.gz",
+      "tags": "queries/python.tags.scm",
+      "extra": "queries/python.extra.scm"
+    },
+    "rust": {
+      "package": "tree-sitter-rust",
+      "version": "0.24.0",
+      "wasm": "grammars/rust.wasm.gz",
+      "tags": "queries/rust.tags.scm",
+      "extra": "queries/rust.extra.scm"
+    },
+    "java": {
+      "package": "tree-sitter-java",
+      "version": "0.23.5",
+      "wasm": "grammars/java.wasm.gz",
+      "tags": "queries/java.tags.scm",
+      "extra": "queries/java.extra.scm"
+    },
+    "cpp": {
+      "package": "tree-sitter-cpp",
+      "version": "0.23.4",
+      "wasm": "grammars/cpp.wasm.gz",
+      "tags": "queries/cpp.tags.scm",
+      "extra": "queries/cpp.extra.scm"
+    },
+    "csharp": {
+      "package": "tree-sitter-c-sharp",
+      "version": "0.23.5",
+      "wasm": "grammars/csharp.wasm.gz",
+      "tags": "queries/csharp.tags.scm",
+      "extra": "queries/csharp.extra.scm"
+    },
+    "ruby": {
+      "package": "tree-sitter-ruby",
+      "version": "0.23.1",
+      "wasm": "grammars/ruby.wasm.gz",
+      "tags": "queries/ruby.tags.scm",
+      "extra": "queries/ruby.extra.scm"
+    },
+    "php": {
+      "package": "tree-sitter-php",
+      "version": "0.24.2",
+      "wasm": "grammars/php.wasm.gz",
+      "tags": "queries/php.tags.scm",
+      "extra": "queries/php.extra.scm"
+    }
+  }
+}

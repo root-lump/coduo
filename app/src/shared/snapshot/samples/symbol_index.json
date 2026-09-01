@@ -1,0 +1,16 @@
+{
+  "degraded": false,
+  "generator": {
+    "grammars": { "rust": "0.24.0" },
+    "webTreeSitter": "0.27.0"
+  },
+  "kinds": ["function"],
+  "paths": ["src/lib.rs"],
+  "symbols": [
+    {
+      "name": "answer",
+      "declarations": [[0, 1, 8, 14, 0]],
+      "occurrences": [[0, 1, 8]]
+    }
+  ]
+}

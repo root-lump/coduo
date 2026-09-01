@@ -6,6 +6,7 @@ import type { CodeTarget, ReviewMode, ReviewRequest } from "../modules/review";
 import { useAgentReview, useReviewController } from "../modules/review";
 import type { FileContent } from "../modules/workspace";
 import { useWorkspace } from "../modules/workspace";
+import type { SymbolIndex } from "../shared/snapshot/SymbolIndex";
 import { usePanelSizing } from "../modules/layout";
 import { useZoom } from "../modules/zoom";
 import type { AppServices } from "./composition";
@@ -67,9 +68,11 @@ export function useAppController(
     void workspace.openFile(path);
   };
 
-  // コードナビゲーション用に readable な全ファイルを一度だけ読む。
-  // 取得失敗時は空のままにし、ナビゲーションが無効になるだけで画面は壊さない。
+  // コードナビゲーション用に、readable な全ファイルの本文（peek 表示の model 生成用）と
+  // 宣言索引を一度ずつ読む。取得失敗時は空のままにし、ナビゲーションが無効になる
+  // だけで画面は壊さない。
   const [navigationFiles, setNavigationFiles] = useState<FileContent[]>([]);
+  const [symbolIndex, setSymbolIndex] = useState<SymbolIndex | null>(null);
   const hasSnapshot = Boolean(snapshot);
   useEffect(() => {
     if (!hasSnapshot) {
@@ -77,10 +80,19 @@ export function useAppController(
     }
     let disposed = false;
     setNavigationFiles([]);
+    setSymbolIndex(null);
     services.workspaceGateway.listFileContents().then(
       (files) => {
         if (!disposed) {
           setNavigationFiles(files);
+        }
+      },
+      () => undefined,
+    );
+    services.workspaceGateway.loadSymbolIndex().then(
+      (index) => {
+        if (!disposed) {
+          setSymbolIndex(index);
         }
       },
       () => undefined,
@@ -169,6 +181,7 @@ export function useAppController(
       codeAnnotations,
       hasReviewNavigation,
       navigationFiles,
+      symbolIndex,
       jumpTarget: jump.target,
       jumpToken: jump.token,
     },

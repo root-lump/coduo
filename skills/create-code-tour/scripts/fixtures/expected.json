@@ -1,0 +1,86 @@
+{
+  "_comment": "各 fixture から抽出されるべき宣言（名前:種別）。文法やクエリの更新で壊れたときは、ここと実際の抽出結果の差分が失敗として出る。",
+  "cpp.cpp": [
+    "Add:function",
+    "MaxItems:variable",
+    "NewStore:function",
+    "Read:function",
+    "Reader:class",
+    "Store:class"
+  ],
+  "csharp.cs": [
+    "Add:method",
+    "IReader:interface",
+    "MaxItems:field",
+    "Read:method",
+    "Store:class"
+  ],
+  "go.go": [
+    "Add:method",
+    "MaxItems:constant",
+    "NewStore:function",
+    "Reader:type",
+    "Store:type",
+    "defaultName:variable"
+  ],
+  "java.java": [
+    "MAX_ITEMS:field",
+    "Reader:interface",
+    "Store:class",
+    "add:method",
+    "read:method"
+  ],
+  "javascript.js": [
+    "MAX_ITEMS:constant",
+    "Store:class",
+    "add:method",
+    "createStore:function",
+    "newStore:function"
+  ],
+  "php.php": [
+    "MAX_ITEMS:constant",
+    "Reader:interface",
+    "Store:class",
+    "add:function",
+    "newStore:function",
+    "read:function"
+  ],
+  "python.py": [
+    "MAX_ITEMS:constant",
+    "Store:class",
+    "add:function",
+    "new_store:function"
+  ],
+  "ruby.rb": [
+    "MAX_ITEMS:constant",
+    "Sample:module",
+    "Store:class",
+    "add:method",
+    "new_store:method"
+  ],
+  "rust.rs": [
+    "MAX_ITEMS:constant",
+    "Reader:interface",
+    "Store:class",
+    "add:method",
+    "new_store:function"
+  ],
+  "tsx.tsx": [
+    "PANEL_ID:constant",
+    "Panel:function",
+    "PanelProps:type",
+    "PanelStore:class",
+    "reset:method"
+  ],
+  "typescript.ts": [
+    "MAX_ITEMS:constant",
+    "Mode:enum",
+    "Reader:interface",
+    "Store:class",
+    "StoreName:type",
+    "add:method",
+    "createStore:function",
+    "newStore:function",
+    "read:method"
+  ]
+}
