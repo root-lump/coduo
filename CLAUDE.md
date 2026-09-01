@@ -35,6 +35,7 @@ pnpm は直接ではなく `mise exec --` 経由で呼ぶ（node と pnpm の両
 - 収集スクリプトの共有ヘルパーは `skills/create-code-tour/scripts/lib.mjs` に置き、各スクリプトへ複製しない
 - 出力 payload は決定的（パス昇順、キー順固定の JSON）。順序や整形を変えると同一入力での差分比較が壊れる
 - コードナビゲーションの宣言索引は収集時に作って payload の `symbolIndex` に載せる（`scripts/symbol-index.mjs` が正本）。ビューアは抽出を持たず索引を引くだけにする。文法を同梱している 11 言語は tree-sitter の tags クエリで、それ以外は同モジュール内の正規表現で抽出する
+- 変更前の本文は payload に載せず、変更ファイルの unified diff を `patches` として載せる。ビューアは変更後の全文に patch を逆適用して変更前を復元し、差分エディタに渡す（`app/src/modules/workspace/reconstructBase.ts` が正本）。逆適用が変更後と食い違うファイルは差分表示を出さない。patch のバイト数は `--fill-budget` の予算から先に差し引くので、超過時に減るのは変更と関係の薄い周辺ファイルの本文になる
 - 索引の生成失敗（文法の読み込み失敗、個別ファイルの解析失敗）は fail closed にしない。該当を索引から落として summary に警告を出す。索引は無くても閲覧が成立する補助機能であり、fail closed が守る「無断で不完全なコードの複製を作らない」とは性質が違う
 
 ## 検証

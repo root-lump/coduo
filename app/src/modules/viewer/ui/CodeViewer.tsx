@@ -1,17 +1,50 @@
 // コードビューアの view。Monaco のライフサイクルは useMonacoViewer が持ち、
 // ここでは placeholder / エディタ / 注釈レイヤの表示だけを組み立てる。
-import Editor from "@monaco-editor/react";
+import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useState } from "react";
 import { CodeAnnotationLayer } from "./CodeAnnotationLayer";
 import type { CodeAnnotation, CodeTarget } from "../../review";
 import type { ChangedLine, FileContent } from "../../workspace";
 import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
+import type { ViewMode } from "../diffView";
 import { languageFromPath } from "../language";
 import { unavailableMessageFor } from "../unavailableMessage";
+import { CODUO_THEME } from "../monacoEnvironment";
 import { useMonacoViewer } from "./useMonacoViewer";
+
+/** コードモードと差分モードで見た目を揃えるための共通オプション。 */
+const SHARED_EDITOR_OPTIONS = {
+  readOnly: true,
+  domReadOnly: true,
+  automaticLayout: true,
+  smoothScrolling: true,
+  cursorSmoothCaretAnimation: "on",
+  fontFamily:
+    '"SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace',
+  fontSize: 14,
+  lineHeight: 23,
+  fontLigatures: true,
+  glyphMargin: false,
+  folding: true,
+  padding: { top: 23, bottom: 30 },
+  renderLineHighlight: "line",
+  roundedSelection: false,
+  scrollBeyondLastLine: false,
+  scrollbar: {
+    verticalScrollbarSize: 13,
+    horizontalScrollbarSize: 13,
+  },
+  stickyScroll: { enabled: true },
+  wordWrap: "off",
+  overviewRulerBorder: false,
+  overviewRulerLanes: 3,
+  contextmenu: true,
+} as const;
 
 type CodeViewerProps = {
   annotations: CodeAnnotation[];
+  /** 差分モードで左側に出す変更前の全文。復元できていなければ undefined。 */
+  baseText?: string;
   changedLines: ChangedLine[];
   file?: FileContent;
   focus?: CodeTarget;
@@ -22,6 +55,9 @@ type CodeViewerProps = {
   onOpenLocation(target: CodeTarget): void;
   jumpTarget?: CodeTarget;
   jumpToken: number;
+  /** 差分モードで変更前後を左右に並べるか（false なら 1 画面に混ぜて出す）。 */
+  renderSideBySide: boolean;
+  viewMode: ViewMode;
 };
 
 type AnnotationRenderState = {
@@ -44,6 +80,7 @@ export function shouldRenderCodeAnnotations({
 
 export function CodeViewer({
   annotations,
+  baseText,
   changedLines,
   file,
   focus,
@@ -54,6 +91,8 @@ export function CodeViewer({
   onOpenLocation,
   jumpTarget,
   jumpToken,
+  renderSideBySide,
+  viewMode,
 }: CodeViewerProps) {
   const [dismissedFocusToken, setDismissedFocusToken] = useState<number>();
   const {
@@ -101,6 +140,51 @@ export function CodeViewer({
     );
   }
 
+  const language = file.language || languageFromPath(file.path);
+
+  // 差分モードでは Monaco が変更行を色分けするため、変更ガター・フォーカス装飾・
+  // 注釈レイヤは出さない（注釈は通常のコードモードに任せる）。
+  if (viewMode === "diff" && baseText !== undefined) {
+    return (
+      <div className="code-viewer" data-testid="code-viewer">
+        <div className="code-editor-surface">
+          <DiffEditor
+            height="100%"
+            original={baseText}
+            modified={file.content}
+            // 差分エディタは左右とも専用 URI のモデルを使い、コードモードの
+            // モデルを共有しない。共有すると、モードを切り替えたときに片方の
+            // unmount がもう片方の使っているモデルを破棄し、DiffEditorWidget が
+            // 「reset 前に model が破棄された」と例外を投げる。
+            originalModelPath={`file://coduo-diff-base/${file.path}`}
+            modifiedModelPath={`file://coduo-diff-head/${file.path}`}
+            // 専用モデルは破棄せず URI ごとに再利用する（破棄の順序に依存しない）。
+            keepCurrentOriginalModel
+            keepCurrentModifiedModel
+            language={language}
+            theme={CODUO_THEME}
+            loading={
+              <div className="viewer-loading">エディタを準備しています…</div>
+            }
+            options={{
+              ...SHARED_EDITOR_OPTIONS,
+              readOnly: true,
+              originalEditable: false,
+              renderSideBySide,
+              // 変更のない範囲は畳んで、変わった箇所だけを追えるようにする。
+              hideUnchangedRegions: { enabled: true },
+              renderOverviewRuler: true,
+              // 読み取り専用なので、行余白の revert アイコンと余白メニューは出さない。
+              renderMarginRevertIcon: false,
+              renderGutterMenu: false,
+              minimap: { enabled: false },
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   const showAnnotations = shouldRenderCodeAnnotations({
     annotationCount: annotations.length,
     dismissedFocusToken,
@@ -118,44 +202,20 @@ export function CodeViewer({
           height="100%"
           path={`file://${file.path}`}
           value={file.content}
-          language={file.language || languageFromPath(file.path)}
-          theme="coduo-dark"
+          language={language}
+          theme={CODUO_THEME}
           loading={
             <div className="viewer-loading">エディタを準備しています…</div>
           }
           onMount={handleMount}
           options={{
-            readOnly: true,
-            domReadOnly: true,
-            automaticLayout: true,
-            smoothScrolling: true,
-            cursorSmoothCaretAnimation: "on",
-            fontFamily:
-              '"SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace',
-            fontSize: 14,
-            lineHeight: 23,
-            fontLigatures: true,
-            glyphMargin: false,
-            folding: true,
+            ...SHARED_EDITOR_OPTIONS,
             minimap: {
               enabled: !showAnnotations,
               scale: 1,
               showSlider: "mouseover",
               maxColumn: 80,
             },
-            padding: { top: 23, bottom: 30 },
-            renderLineHighlight: "line",
-            roundedSelection: false,
-            scrollBeyondLastLine: false,
-            scrollbar: {
-              verticalScrollbarSize: 13,
-              horizontalScrollbarSize: 13,
-            },
-            stickyScroll: { enabled: true },
-            wordWrap: "off",
-            overviewRulerBorder: false,
-            overviewRulerLanes: 3,
-            contextmenu: true,
           }}
         />
       </div>

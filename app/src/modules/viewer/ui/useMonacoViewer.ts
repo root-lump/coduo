@@ -196,33 +196,6 @@ export function useMonacoViewer({
     focusDecorationsRef.current = editorInstance.createDecorationsCollection();
     annotationDecorationsRef.current =
       editorInstance.createDecorationsCollection();
-    monaco.editor.defineTheme("coduo-dark", {
-      base: "vs-dark",
-      inherit: true,
-      rules: [
-        { token: "comment", foreground: "667085", fontStyle: "italic" },
-        { token: "keyword", foreground: "C4B5FD" },
-        { token: "string", foreground: "9DD274" },
-        { token: "number", foreground: "F0B36D" },
-        { token: "type", foreground: "78DCE8" },
-      ],
-      colors: {
-        "editor.background": "#0d1017",
-        "editor.foreground": "#c8ceda",
-        "editorLineNumber.foreground": "#414756",
-        "editorLineNumber.activeForeground": "#8d95a5",
-        "editor.selectionBackground": "#6d5bd033",
-        "editor.inactiveSelectionBackground": "#6d5bd018",
-        "editor.lineHighlightBackground": "#ffffff05",
-        "editorCursor.foreground": "#a99cf7",
-        "editorIndentGuide.background1": "#252a35",
-        "editorIndentGuide.activeBackground1": "#3f4655",
-        "editorGutter.background": "#0d1017",
-        "scrollbarSlider.background": "#8892a622",
-        "scrollbarSlider.hoverBackground": "#8892a644",
-      },
-    });
-    monaco.editor.setTheme("coduo-dark");
     applyDecorations();
     setIsEditorMounted(true);
   };

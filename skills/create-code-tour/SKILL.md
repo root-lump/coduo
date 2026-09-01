@@ -38,7 +38,7 @@ Coduo は、対象コードの固定 revision 全文を埋め込んだ単一 HTM
    - **本文の取得元は指定しなくてよい**。既定でローカルの git object から読み、手元に無ければ一時クローンで確保する（実行後に削除）。関係ないクローンを掴む恐れがある場合や、使わせたいクローンが決まっている場合だけ `--from-local <dir>` で明示する（remote が対象 owner/repo を指していなければ fail closed）。**ユーザーの作業ツリーを checkout し直したり、事前に clone を用意したりしない**（collector が自分で確保する）。
    - `clone`/`fetch` ができない環境で止まったときだけ `--from-api` を付けて GitHub API 経由の収集へ切り替える（本文・ツリーとも API から取るため、大きい対象では tree truncation や大量の blob 取得が起きる）。
    - `--diff <dir>` はそのディレクトリの**現在の作業ツリー**を撮る。git 管理下なら追跡ファイルと追跡外ファイル（gitignore 対象は除く）を対象にし、未コミット変更を `changes` / `changedLines` として拾う（viewer の変更パネルと差分ガターが PR と同じように働く。変更行は HEAD → 作業ツリーで数えるので staged / unstaged の合計）。非 git ディレクトリのみファイルシステム走査（ドットディレクトリは除外）で、`changes` は空になる。
-   - stderr の summary（collectedFrom / visibility / files / readable / notCollected / totalSourceBytes / payloadBytes / isPrivate）を必ず確認する。`collectedFrom` が想定と違うクローンを指していたら、`--from-local` で指定し直す。
+   - stderr の summary（collectedFrom / visibility / files / readable / notCollected / patches / totalSourceBytes / payloadBytes / isPrivate）を必ず確認する。`collectedFrom` が想定と違うクローンを指していたら、`--from-local` で指定し直す。
    - **fail closed を尊重する**: 容量超過（8MB）・secret 検出・tree truncated（`--from-api` のときのみ）で止まったら、勝手に縮小・除外せず、下記の手順でユーザーへ提示して判断を仰ぐ。
    - ツリー（Repository Tree）には常に全ファイルが載り、本文を収集しなかったファイルは viewer で「収集範囲外」と表示される。
 

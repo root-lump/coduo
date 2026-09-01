@@ -78,6 +78,39 @@
   color: #7d8595;
 }
 
+.view-mode-switch {
+  display: flex;
+  gap: 4px;
+}
+
+.view-mode-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: #151923;
+  color: #8d95a5;
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+
+.view-mode-button:hover {
+  background: #1b202c;
+  color: #c8ceda;
+}
+
+.view-mode-button.is-active {
+  background: #6d5bd033;
+  color: #c4b5fd;
+}
+
+.view-mode-button span {
+  font-size: var(--fs-micro);
+}
+
 .viewer-body {
   position: relative;
   min-height: 0;

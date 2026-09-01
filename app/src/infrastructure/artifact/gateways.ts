@@ -48,6 +48,9 @@ export function createSnapshotWorkspaceGateway(
     async loadChangedLines(path: string): Promise<ChangedLine[]> {
       return structuredClone(payload.changedLines[path] ?? []);
     },
+    async loadPatch(path: string): Promise<string | null> {
+      return payload.patches?.[path] ?? null;
+    },
     async listFileContents(): Promise<FileContent[]> {
       const paths = Object.keys(payload.fileContents).sort();
       return paths.map((path) => structuredClone(payload.fileContents[path]));

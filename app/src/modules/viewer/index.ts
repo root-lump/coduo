@@ -11,3 +11,5 @@ export type {
   CodeNavigationIndex,
   SymbolLocation,
 } from "./codeNavigation";
+export { shouldOfferDiff } from "./diffView";
+export type { ViewMode } from "./diffView";

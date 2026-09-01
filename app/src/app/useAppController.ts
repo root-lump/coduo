@@ -8,6 +8,7 @@ import type { FileContent } from "../modules/workspace";
 import { useWorkspace } from "../modules/workspace";
 import type { SymbolIndex } from "../shared/snapshot/SymbolIndex";
 import { usePanelSizing } from "../modules/layout";
+import { shouldOfferDiff, type ViewMode } from "../modules/viewer";
 import { useZoom } from "../modules/zoom";
 import type { AppServices } from "./composition";
 
@@ -147,10 +148,28 @@ export function useAppController(
     })();
   };
 
+  // 差分モードはファイルを切り替えても保つ（変更ファイルを続けて見るとき、
+  // ファイルごとに押し直さずに済む）。差分を出せないファイルでは表示側が
+  // コードモードへ落ちる。
+  const [viewMode, setViewMode] = useState<ViewMode>("code");
+  const [renderSideBySide, setRenderSideBySide] = useState(true);
+
+  // Tour のステップ移動では注釈とフォーカス装飾が要るので、コードモードへ戻す。
+  useEffect(() => {
+    if (!review.isExploring) {
+      setViewMode("code");
+    }
+  }, [review.focusToken, review.isExploring]);
+
   // ---- 描画用の導出値 ----
   const activeChange = snapshot?.changes.find(
     (change) => change.path === workspace.activeFile?.path,
   );
+  const canShowDiff = shouldOfferDiff({
+    baseText: workspace.activeBaseText,
+    headText: workspace.activeFile?.content,
+  });
+  const effectiveViewMode: ViewMode = canShowDiff ? viewMode : "code";
   const activeFocus =
     !review.isExploring && workspace.activeFile?.path === targetFile
       ? review.resolvedStep?.focus
@@ -174,9 +193,15 @@ export function useAppController(
       retry,
       selectFileManually,
       jumpToLocation,
+      toggleViewMode: () =>
+        setViewMode((current) => (current === "code" ? "diff" : "code")),
+      toggleSideBySide: () => setRenderSideBySide((current) => !current),
     },
     derived: {
       activeChange,
+      canShowDiff,
+      renderSideBySide,
+      viewMode: effectiveViewMode,
       activeFocus,
       codeAnnotations,
       hasReviewNavigation,
