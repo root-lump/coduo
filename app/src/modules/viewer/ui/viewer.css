@@ -475,3 +475,11 @@
 .monaco-editor .git-gutter-deleted {
   background: var(--red);
 }
+
+/* 1 画面差分では、Monaco が変更前の行番号カラムに追加行の高さぶんの詰め物を
+   置き、そこへ削除行と同じ gutter-delete を付ける。既定では削除色になり、
+   追加行が削除にも見えるので追加色で塗り直す。詰め物は view zone にだけ
+   現れ、実際の削除行のガターは margin-view-overlays 側に出るので当たらない。 */
+.monaco-diff-editor .margin-view-zones > .gutter-delete {
+  background-color: var(--vscode-diffEditorGutter-insertedLineBackground);
+}
