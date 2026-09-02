@@ -97,6 +97,7 @@ export function CodeViewer({
   const [dismissedFocusToken, setDismissedFocusToken] = useState<number>();
   const {
     anchors,
+    handleDiffMount,
     handleMount,
     selectAnnotation,
     selectedAnnotationId,
@@ -141,12 +142,30 @@ export function CodeViewer({
   }
 
   const language = file.language || languageFromPath(file.path);
+  const showAnnotations = shouldRenderCodeAnnotations({
+    annotationCount: annotations.length,
+    dismissedFocusToken,
+    focusToken,
+    hasViewport: viewport.height > 0 && viewport.width > 0,
+  });
+  const viewerClassName = `code-viewer${showAnnotations ? " has-code-annotations" : ""}`;
+  const annotationLayer = showAnnotations ? (
+    <CodeAnnotationLayer
+      anchors={anchors}
+      annotations={annotations}
+      height={viewport.height}
+      onClose={() => setDismissedFocusToken(focusToken)}
+      onSelect={(id) => selectAnnotation(id, true)}
+      selectedId={selectedAnnotationId}
+      width={viewport.width}
+    />
+  ) : null;
 
-  // 差分モードでは Monaco が変更行を色分けするため、変更ガター・フォーカス装飾・
-  // 注釈レイヤは出さない（注釈は通常のコードモードに任せる）。
+  // 差分モードでも注釈とフォーカス装飾は modified 側に付ける（useMonacoViewer）。
+  // 変更行ガター装飾だけは Monaco の差分色と重なるため出さない。
   if (viewMode === "diff" && baseText !== undefined) {
     return (
-      <div className="code-viewer" data-testid="code-viewer">
+      <div className={viewerClassName} data-testid="code-viewer">
         <div className="code-editor-surface">
           <DiffEditor
             height="100%"
@@ -166,6 +185,7 @@ export function CodeViewer({
             loading={
               <div className="viewer-loading">エディタを準備しています…</div>
             }
+            onMount={handleDiffMount}
             options={{
               ...SHARED_EDITOR_OPTIONS,
               readOnly: true,
@@ -181,22 +201,13 @@ export function CodeViewer({
             }}
           />
         </div>
+        {annotationLayer}
       </div>
     );
   }
 
-  const showAnnotations = shouldRenderCodeAnnotations({
-    annotationCount: annotations.length,
-    dismissedFocusToken,
-    focusToken,
-    hasViewport: viewport.height > 0 && viewport.width > 0,
-  });
-
   return (
-    <div
-      className={`code-viewer${showAnnotations ? " has-code-annotations" : ""}`}
-      data-testid="code-viewer"
-    >
+    <div className={viewerClassName} data-testid="code-viewer">
       <div className="code-editor-surface">
         <Editor
           height="100%"
@@ -219,17 +230,7 @@ export function CodeViewer({
           }}
         />
       </div>
-      {showAnnotations && (
-        <CodeAnnotationLayer
-          anchors={anchors}
-          annotations={annotations}
-          height={viewport.height}
-          onClose={() => setDismissedFocusToken(focusToken)}
-          onSelect={(id) => selectAnnotation(id, true)}
-          selectedId={selectedAnnotationId}
-          width={viewport.width}
-        />
-      )}
+      {annotationLayer}
     </div>
   );
 }

@@ -1,9 +1,11 @@
 // Monaco エディタのライフサイクル管理。
 // エディタ実体・デコレーション・注釈アンカー位置の追従をここに閉じ込め、
-// CodeViewer（view）は表示だけを担う。
+// CodeViewer（view）は表示だけを担う。対象はコードエディタと、差分エディタの
+// modified 側（変更後）のどちらでもよい。Tour の行番号は変更後のファイルを指す
+// ため、original 側には何も付けない。
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { editor } from "monaco-editor";
-import type { OnMount } from "@monaco-editor/react";
+import type { DiffOnMount, OnMount } from "@monaco-editor/react";
 import type { CodeAnnotation, CodeTarget } from "../../review";
 import type { ChangedLine } from "../../workspace";
 import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
@@ -52,6 +54,20 @@ type UseMonacoViewerArgs = {
   jumpToken: number;
 };
 
+type AttachOptions = {
+  /** 注釈・装飾・reveal の対象。 */
+  editorInstance: editor.ICodeEditor;
+  /**
+   * 注釈レイヤの幅の基準。差分の並べて表示では modified 側の layout 幅が
+   * 右半分しか返さないため、差分エディタ全体の DOM を渡す。
+   */
+  surface: HTMLElement | null;
+  /** エディタ標準の scroll / layout / model 以外で位置の再計算が要るイベント。 */
+  extraListeners: Disposable[];
+  /** 変更行ガター装飾を出すか。差分モードでは Monaco の差分色と重なるので出さない。 */
+  paintChangedLines: boolean;
+};
+
 export function useMonacoViewer({
   annotations,
   changedLines,
@@ -64,7 +80,9 @@ export function useMonacoViewer({
   jumpTarget,
   jumpToken,
 }: UseMonacoViewerArgs) {
-  const editorRef = useRef<editor.IStandaloneCodeEditor | undefined>(undefined);
+  const editorRef = useRef<editor.ICodeEditor | undefined>(undefined);
+  const surfaceRef = useRef<HTMLElement | null>(null);
+  const paintChangedLinesRef = useRef(true);
   const editorListenersRef = useRef<Disposable | undefined>(undefined);
   const mouseListenerRef = useRef<Disposable | undefined>(undefined);
   const gitDecorationsRef = useRef<
@@ -82,6 +100,9 @@ export function useMonacoViewer({
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string>();
   const [viewport, setViewport] = useState({ height: 0, width: 0 });
   const [isEditorMounted, setIsEditorMounted] = useState(false);
+  // エディタ実体が入れ替わった（コード ⇄ 差分の切り替え）合図。
+  // 新しいエディタにも装飾とフォーカス位置を付け直すため、効果の依存に加える。
+  const [mountToken, setMountToken] = useState(0);
 
   const annotationsRef = useRef(annotations);
   annotationsRef.current = annotations;
@@ -96,6 +117,7 @@ export function useMonacoViewer({
       return;
     }
     const layout = editorInstance.getLayoutInfo();
+    const width = surfaceRef.current?.clientWidth ?? layout.width;
     const firstVisibleLine =
       editorInstance.getVisibleRanges()[0]?.startLineNumber ?? 1;
     const nextAnchors = annotations.map((annotation) => {
@@ -118,9 +140,9 @@ export function useMonacoViewer({
       };
     });
     setViewport((current) =>
-      current.height === layout.height && current.width === layout.width
+      current.height === layout.height && current.width === width
         ? current
-        : { height: layout.height, width: layout.width },
+        : { height: layout.height, width },
     );
     setAnchors(nextAnchors);
   }, [annotations]);
@@ -140,7 +162,11 @@ export function useMonacoViewer({
     const model = editorInstance?.getModel();
     if (!editorInstance || !model) return;
     const lineCount = model.getLineCount();
-    gitDecorationsRef.current?.set(gitDecorations(changedLines, lineCount));
+    gitDecorationsRef.current?.set(
+      paintChangedLinesRef.current
+        ? gitDecorations(changedLines, lineCount)
+        : [],
+    );
     focusDecorationsRef.current?.set(focusDecoration(focus, lineCount));
     annotationDecorationsRef.current?.set(
       annotationDecorations(annotations, selectedAnnotationId, lineCount),
@@ -154,6 +180,9 @@ export function useMonacoViewer({
     selectedAnnotationId,
   ]);
 
+  // 選択を先に動かしてから reveal する。差分エディタの折り畳まれた未変更領域は
+  // modified 側の選択が動いたときに展開されるため、逆順だと隠れた行への reveal が
+  // 空振りする。
   const selectAnnotation = useCallback(
     (id: string, reveal: boolean) => {
       setSelectedAnnotationId(id);
@@ -164,24 +193,37 @@ export function useMonacoViewer({
       if (!editorInstance || !model || !annotation) return;
       const range = focusRange(annotation.target, model.getLineCount());
       if (range) {
+        editorInstance.setSelection(range);
         editorInstance.revealRangeInCenterIfOutsideViewport(
           range,
           monaco.editor.ScrollType.Smooth,
         );
-        editorInstance.setSelection(range);
       }
     },
     [annotations],
   );
 
-  const handleMount: OnMount = (editorInstance) => {
+  const attachEditor = ({
+    editorInstance,
+    surface,
+    extraListeners,
+    paintChangedLines,
+  }: AttachOptions) => {
     editorRef.current = editorInstance;
+    surfaceRef.current = surface;
+    paintChangedLinesRef.current = paintChangedLines;
     editorListenersRef.current?.dispose();
     mouseListenerRef.current?.dispose();
-    editorListenersRef.current = subscribeToAnnotationEvents(
+    const standardListeners = subscribeToAnnotationEvents(
       editorInstance,
       schedulePositionUpdate,
     );
+    editorListenersRef.current = {
+      dispose: () => {
+        standardListeners.dispose();
+        extraListeners.forEach((listener) => listener.dispose());
+      },
+    };
     mouseListenerRef.current = editorInstance.onMouseDown((event) => {
       const position = event.target.position;
       if (!position) return;
@@ -198,6 +240,30 @@ export function useMonacoViewer({
       editorInstance.createDecorationsCollection();
     applyDecorations();
     setIsEditorMounted(true);
+    setMountToken((current) => current + 1);
+  };
+
+  const handleMount: OnMount = (editorInstance) => {
+    attachEditor({
+      editorInstance,
+      surface: editorInstance.getDomNode(),
+      extraListeners: [],
+      paintChangedLines: true,
+    });
+  };
+
+  const handleDiffMount: DiffOnMount = (diffEditor) => {
+    const modified = diffEditor.getModifiedEditor();
+    attachEditor({
+      editorInstance: modified,
+      surface: diffEditor.getContainerDomNode(),
+      // 差分計算の完了と未変更領域の折り畳み変化で行の位置が動く。
+      extraListeners: [
+        diffEditor.onDidUpdateDiff(schedulePositionUpdate),
+        modified.onDidChangeHiddenAreas(schedulePositionUpdate),
+      ],
+      paintChangedLines: false,
+    });
   };
 
   // コードナビゲーションは Monaco 全体への登録なので、エディタ mount 後に
@@ -227,8 +293,8 @@ export function useMonacoViewer({
     }
     const range = focusRange(jumpTarget, model.getLineCount());
     if (range) {
-      editorInstance.revealRangeInCenter(range, monaco.editor.ScrollType.Smooth);
       editorInstance.setSelection(range);
+      editorInstance.revealRangeInCenter(range, monaco.editor.ScrollType.Smooth);
     }
   }, [filePath, jumpTarget, jumpToken]);
 
@@ -237,19 +303,19 @@ export function useMonacoViewer({
   }, [focusToken, annotations]);
   useEffect(() => {
     applyDecorations();
-  }, [applyDecorations, filePath, focusToken]);
+  }, [applyDecorations, filePath, focusToken, mountToken]);
   useEffect(() => {
     const editorInstance = editorRef.current;
     const model = editorInstance?.getModel();
     const range = model ? focusRange(focus, model.getLineCount()) : undefined;
     if (editorInstance && range) {
+      editorInstance.setSelection(range);
       editorInstance.revealRangeInCenter(
         range,
         monaco.editor.ScrollType.Smooth,
       );
-      editorInstance.setSelection(range);
     }
-  }, [filePath, focus, focusToken]);
+  }, [filePath, focus, focusToken, mountToken]);
   useEffect(
     () => () => {
       editorListenersRef.current?.dispose();
@@ -265,6 +331,7 @@ export function useMonacoViewer({
 
   return {
     anchors,
+    handleDiffMount,
     handleMount,
     selectAnnotation,
     selectedAnnotationId,

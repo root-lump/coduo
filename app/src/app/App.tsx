@@ -18,19 +18,24 @@ const CodeViewer = lazy(() =>
   })),
 );
 import { type AppServices } from "./composition";
+import { initialViewFor } from "./initialViewFor";
 import { useAppController } from "./useAppController";
 
 type AppProps = {
   /** snapshot payload から組んだ services を注入する（テストでは fake）。 */
   services: AppServices;
-  /** 埋め込みスナップショットの出自（ヘッダー表示用）。 */
+  /** 埋め込みスナップショットの出自（ヘッダー表示と既定の表示モードに使う）。 */
   source: CoduoSourceMeta;
   /** 起動時に自動表示する Tour のモード。埋め込み Tour のキーと対応する。 */
   initialMode: ReviewMode;
 };
 
 function App({ services, source, initialMode }: AppProps) {
-  const controller = useAppController(services, initialMode);
+  const controller = useAppController(
+    services,
+    initialMode,
+    initialViewFor(source.kind),
+  );
   const {
     workspace,
     zoom,

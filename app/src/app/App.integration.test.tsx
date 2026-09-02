@@ -3,8 +3,8 @@
 // gateway は AppServices として注入する（モジュールモック不要）。
 // Coduo ではローカルピッカーが無く、snapshot の展開と Tour の読み込みは
 // 起動時に自動で行われる。
-import { render, screen } from "@testing-library/react";
-import { act } from "react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { act, type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import {
@@ -17,10 +17,18 @@ import {
 } from "../shared/test/fakeGateways";
 import type { AgentReviewResult } from "../modules/review";
 
-// Monaco は jsdom で動かないため、App レベルではファイルパスだけ映す stub にする。
+// Monaco は jsdom で動かないため、App レベルではファイルパスと表示モードだけ映す stub にする。
 vi.mock("../modules/viewer/ui/CodeViewer", () => ({
-  CodeViewer: (props: { file?: { path: string } }) => (
-    <div data-testid="code-viewer">
+  CodeViewer: (props: {
+    file?: { path: string };
+    viewMode: string;
+    renderSideBySide: boolean;
+  }) => (
+    <div
+      data-testid="code-viewer"
+      data-view-mode={props.viewMode}
+      data-side-by-side={String(props.renderSideBySide)}
+    >
       {props.file?.path ?? "(ファイル未選択)"}
     </div>
   ),
@@ -32,13 +40,16 @@ const testSource = {
   revision: "0000000000000000000000000000000000000000",
 } as const;
 
-function renderApp() {
+type RenderOptions = Partial<
+  Pick<ComponentProps<typeof App>, "source" | "initialMode">
+>;
+
+function renderApp({
+  source = testSource,
+  initialMode = "repository",
+}: RenderOptions = {}) {
   return render(
-    <App
-      services={fakeServices()}
-      source={testSource}
-      initialMode="repository"
-    />,
+    <App services={fakeServices()} source={source} initialMode={initialMode} />,
   );
 }
 
@@ -93,5 +104,65 @@ describe("起動とスナップショット展開", () => {
     await screen.findByText("説明を表示できませんでした");
     expect(screen.getByText("Claude Code にログインしてください")).toBeTruthy();
     expect(screen.getByRole("button", { name: "再試行" })).toBeTruthy();
+  });
+});
+
+describe("表示モード", () => {
+  it("差分モードは Tour のステップを移動しても保たれる", async () => {
+    // fixture の src/lib.rs（42 を返す）に逆適用できる hunk。変更前は 41 を返す。
+    fakeWorkspaceGateway.loadPatch.mockResolvedValue(
+      ["@@ -1,3 +1,3 @@", " pub fn answer() -> u32 {", "-    41", "+    42", " }"].join(
+        "\n",
+      ),
+    );
+    fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
+    renderApp();
+
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    expect(viewer.getAttribute("data-view-mode")).toBe("code");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /変更前と比べる/ }),
+    );
+    expect(viewer.getAttribute("data-view-mode")).toBe("diff");
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "次のレビューステップ" }),
+      );
+    });
+    expect(screen.getByTestId("current-explanation").textContent).toContain(
+      "main から呼ばれます",
+    );
+    expect(viewer.getAttribute("data-view-mode")).toBe("diff");
+  });
+});
+
+describe("既定の表示モード", () => {
+  it("PR の payload は差分の 1 画面表示で始まる", async () => {
+    fakeWorkspaceGateway.loadPatch.mockResolvedValue(
+      ["@@ -1,3 +1,3 @@", " pub fn answer() -> u32 {", "-    41", "+    42", " }"].join(
+        "\n",
+      ),
+    );
+    fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
+    renderApp({
+      source: {
+        kind: "pull_request",
+        name: "example/demo-repo",
+        revision: "1111111111111111111111111111111111111111",
+        baseRevision: "0000000000000000000000000000000000000000",
+      },
+      initialMode: "pull_request",
+    });
+
+    await screen.findByText("デモリポジトリのレビュー");
+    // patch の読み込みが終わって差分を出せるようになると、切り替えボタンが出る。
+    // 既定が 1 画面表示なので、2 つ目のボタンは「並べて見る」になる。
+    await screen.findByRole("button", { name: "並べて見る" });
+    const viewer = screen.getByTestId("code-viewer");
+    expect(viewer.getAttribute("data-view-mode")).toBe("diff");
+    expect(viewer.getAttribute("data-side-by-side")).toBe("false");
   });
 });
