@@ -3,7 +3,7 @@
 // gateway は AppServices として注入する（モジュールモック不要）。
 // Coduo ではローカルピッカーが無く、snapshot の展開と Tour の読み込みは
 // 起動時に自動で行われる。
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -17,10 +17,10 @@ import {
 } from "../shared/test/fakeGateways";
 import type { AgentReviewResult } from "../modules/review";
 
-// Monaco は jsdom で動かないため、App レベルではファイルパスだけ映す stub にする。
+// Monaco は jsdom で動かないため、App レベルではファイルパスと表示モードだけ映す stub にする。
 vi.mock("../modules/viewer/ui/CodeViewer", () => ({
-  CodeViewer: (props: { file?: { path: string } }) => (
-    <div data-testid="code-viewer">
+  CodeViewer: (props: { file?: { path: string }; viewMode: string }) => (
+    <div data-testid="code-viewer" data-view-mode={props.viewMode}>
       {props.file?.path ?? "(ファイル未選択)"}
     </div>
   ),
@@ -93,5 +93,37 @@ describe("起動とスナップショット展開", () => {
     await screen.findByText("説明を表示できませんでした");
     expect(screen.getByText("Claude Code にログインしてください")).toBeTruthy();
     expect(screen.getByRole("button", { name: "再試行" })).toBeTruthy();
+  });
+});
+
+describe("表示モード", () => {
+  it("差分モードは Tour のステップを移動しても保たれる", async () => {
+    // fixture の src/lib.rs（42 を返す）に逆適用できる hunk。変更前は 41 を返す。
+    fakeWorkspaceGateway.loadPatch.mockResolvedValue(
+      ["@@ -1,3 +1,3 @@", " pub fn answer() -> u32 {", "-    41", "+    42", " }"].join(
+        "\n",
+      ),
+    );
+    fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
+    renderApp();
+
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    expect(viewer.getAttribute("data-view-mode")).toBe("code");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /変更前と比べる/ }),
+    );
+    expect(viewer.getAttribute("data-view-mode")).toBe("diff");
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "次のレビューステップ" }),
+      );
+    });
+    expect(screen.getByTestId("current-explanation").textContent).toContain(
+      "main から呼ばれます",
+    );
+    expect(viewer.getAttribute("data-view-mode")).toBe("diff");
   });
 });
