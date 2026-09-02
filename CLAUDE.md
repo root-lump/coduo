@@ -43,3 +43,8 @@ pnpm は直接ではなく `mise exec --` 経由で呼ぶ（node と pnpm の両
 - `skills/create-code-tour/scripts/` のうち索引生成（`symbol-index.mjs`）だけは自動テストがあり、app の vitest から回す（`app/src/shared/symbolIndex/buildSymbolIndex.test.ts` が `scripts/fixtures/` の言語別 fixture を検証する）。他のスクリプトに自動テストは無いので、変更したら `--diff <dir>` などで実際に実行し、stderr の summary（collectedFrom / files / readable / notCollected / totalSourceBytes / isPrivate / symbolIndex）を確認する
 - viewer の変更は `pnpm test:run` を通し、表示に関わるものは embed した HTML をブラウザで開いて確認する
 - CI（`.github/workflows/ci.yml`）は型検査・テストに加えて生成物の同期を見る。`pnpm template` と `fetch-tree-sitter.mjs` を実行して差分が出ないことが条件で、gzip は展開後の内容で比較する
+
+## Pull Request
+
+- viewer の表示や操作が変わる変更は、`verify-viewer` のブラウザ確認で撮ったスクリーンショットを PR の概要欄に貼る。変更前後の見た目が違うなら、比較できるように両方載せる
+- スクリーンショットは `gh pr create --attach ./before.png --attach ./after.png` で添付する（`--attach` は `gh` 2.99.0 以降、1 コマンド 50 ファイルまで）。本文に `![変更後](./after.png)` の形で参照を書いておけば、その位置がアップロード後の URL に置き換わる。参照が無い分は本文末尾に追記される。代替テキストはパスの後ろに `#` で付ける（`./after.png#変更後`）
