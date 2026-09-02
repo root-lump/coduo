@@ -1,16 +1,14 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 
-import type { ResizeSide } from "../../modules/layout";
-
 type PanelResizeHandleProps = {
   label: string;
-  side: ResizeSide;
-  onResizeStart: (side: ResizeSide, clientX: number) => void;
+  className?: string;
+  onResizeStart: (clientX: number) => void;
 };
 
 export function PanelResizeHandle({
   label,
-  side,
+  className,
   onResizeStart,
 }: PanelResizeHandleProps) {
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -19,12 +17,14 @@ export function PanelResizeHandle({
     }
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    onResizeStart(side, event.clientX);
+    onResizeStart(event.clientX);
   };
 
   return (
     <div
-      className="panel-resize-handle"
+      className={
+        className ? `panel-resize-handle ${className}` : "panel-resize-handle"
+      }
       role="separator"
       aria-label={label}
       aria-orientation="vertical"

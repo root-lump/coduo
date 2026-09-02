@@ -1,5 +1,7 @@
 import { useState, type CSSProperties, type UIEvent } from "react";
 import type { CodeAnnotation } from "../../review";
+import { TourMarkdown } from "../../review";
+import type { FileReference } from "../../workspace";
 import type { AnnotationAnchor } from "../codeAnnotations";
 import {
   annotationRailHeight,
@@ -16,6 +18,8 @@ type CodeAnnotationLayerProps = {
   height: number;
   onClose(): void;
   onSelect(id: string): void;
+  resolveFileReference(text: string): FileReference | undefined;
+  onOpenFileReference(reference: FileReference): void;
   selectedId?: string;
   width: number;
 };
@@ -26,6 +30,8 @@ export function CodeAnnotationLayer({
   height,
   onClose,
   onSelect,
+  resolveFileReference,
+  onOpenFileReference,
   selectedId,
   width,
 }: CodeAnnotationLayerProps) {
@@ -53,6 +59,7 @@ export function CodeAnnotationLayer({
   const isScrollable = railHeight > height;
   const scrollTop = isScrollable ? railScrollTop : 0;
   const lineStart = Math.max(width - 113, 90);
+  // カード左端はエディタ面の右端から 23px（レールの右余白 15px とカードの内側余白）。
   const lineEnd = width + 23;
 
   return (
@@ -108,30 +115,45 @@ export function CodeAnnotationLayer({
             const style = {
               top: `${placement?.cardTop ?? ANNOTATION_RAIL_MARGIN}px`,
             } satisfies CSSProperties;
+            // 本文の Markdown にファイルリンク（button）が入るため、カード全体を
+            // button にせず、番号と見出しの button で選択とキーボード操作を受ける。
+            // カード本体の click は補助で、リンク側は stopPropagation で切り分ける。
             return (
-              <button
-                aria-label={`${index + 1}. ${annotation.label}のコードを表示`}
-                aria-pressed={selected}
+              <div
                 className={`code-annotation-card annotation-color-${(index % 4) + 1}${selected ? " is-selected" : ""}${offscreen ? " is-offscreen" : ""}`}
+                data-testid="code-annotation-card"
                 key={annotation.id}
                 onClick={() => onSelect(annotation.id)}
                 style={style}
-                type="button"
               >
-                <span className="code-annotation-number">{index + 1}</span>
-                <span className="code-annotation-copy">
+                <button
+                  aria-label={`${index + 1}. ${annotation.label}のコードを表示`}
+                  aria-pressed={selected}
+                  className="code-annotation-select"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect(annotation.id);
+                  }}
+                  type="button"
+                >
+                  <span className="code-annotation-number">{index + 1}</span>
                   <strong>{annotation.label}</strong>
-                  <span>{annotation.explanation}</span>
-                </span>
-                {offscreen && (
-                  <span
-                    className="code-annotation-offscreen"
-                    aria-hidden="true"
-                  >
-                    ↕
-                  </span>
-                )}
-              </button>
+                  {offscreen && (
+                    <span
+                      className="code-annotation-offscreen"
+                      aria-hidden="true"
+                    >
+                      ↕
+                    </span>
+                  )}
+                </button>
+                <TourMarkdown
+                  className="code-annotation-body"
+                  text={annotation.explanation}
+                  resolveFileReference={resolveFileReference}
+                  onOpenFileReference={onOpenFileReference}
+                />
+              </div>
             );
           })}
         </div>

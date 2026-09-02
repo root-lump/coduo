@@ -198,8 +198,20 @@
   position: absolute;
   inset: 0;
 }
+/* 注釈レールの幅は CodeViewer が --annotation-rail-width として渡す
+   （既定 358px。useAnnotationRailSizing が制約と保存を持つ）。
+   レール本体とカードの幅はこの値から導き、コネクタ線の終点（幅 + 23px）と揃える。 */
 .code-viewer.has-code-annotations .code-editor-surface {
-  right: 358px;
+  right: var(--annotation-rail-width, 358px);
+}
+
+.code-annotation-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(var(--annotation-rail-width, 358px) - 4px);
+  z-index: 30;
+  width: 9px;
 }
 
 .monaco-editor .code-annotation-range {
@@ -279,7 +291,7 @@
   top: 0;
   right: 15px;
   bottom: 0;
-  width: 335px;
+  width: calc(var(--annotation-rail-width, 358px) - 23px);
   border-left: 1px solid #34394a80;
   background: linear-gradient(90deg, transparent, #0b0e16e8 12%, #0b0e16f5);
   pointer-events: none;
@@ -299,11 +311,14 @@
   position: absolute;
   right: 0;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 18px;
-  gap: 10px;
-  width: 320px;
-  min-height: 115px;
-  max-height: 128px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 6px;
+  align-content: start;
+  width: calc(var(--annotation-rail-width, 358px) - 38px);
+  min-height: 137px;
+  /* codeAnnotations.ts の ANNOTATION_CARD_HEIGHT と揃える */
+  max-height: 150px;
   padding: 12px 10px 12px 12px;
   border: 1px solid #343a4a;
   border-left: 2px solid var(--annotation-color);
@@ -341,9 +356,9 @@
   color: #c6cad4;
 }
 /* 選択中は説明を切り詰めず、長い場合はカード内でスクロールさせる */
-.code-annotation-card.is-selected .code-annotation-copy > span {
+.code-annotation-card.is-selected .code-annotation-body {
   display: block;
-  max-height: 265px;
+  max-height: 243px;
   overflow-y: auto;
   font-size: var(--fs-body);
   scrollbar-width: thin;
@@ -371,25 +386,46 @@
   color: #0d1119;
 }
 
-.code-annotation-copy {
+/* 番号と見出しの button。カード全体ではなくここが選択とキーボード操作を受ける。 */
+.code-annotation-select {
   display: grid;
-  align-content: start;
-  gap: 6px;
+  grid-column: 1 / -1;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 10px;
   min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.code-annotation-copy strong {
+.code-annotation-select:focus-visible {
+  outline: 2px solid var(--annotation-color);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* 見出しは 2 行まで折り返し、超えた分だけ省略する（上限 36 字は validate-tour が見る）。 */
+.code-annotation-select strong {
+  display: -webkit-box;
   overflow: hidden;
   color: #e3e5eb;
-  font-size: var(--fs-body);
+  /* 既定のレール幅（見出し列 245px）で 36 字が 2 行に収まる大きさ。 */
+  font-size: 13px;
   font-weight: 680;
   line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
-.code-annotation-copy > span {
+.code-annotation-body {
   display: -webkit-box;
+  grid-column: 2;
+  min-width: 0;
   color: #959cab;
   font-size: var(--fs-caption);
   line-height: 1.55;
@@ -427,20 +463,18 @@
   color: #d4d1eb;
 }
 
-@media (max-width: 1225px) {
-  .code-annotation-rail {
-    width: 270px;
-  }
-  .code-annotation-card {
-    width: 255px;
-    grid-template-columns: 28px minmax(0, 1fr);
-  }
-  .code-annotation-offscreen {
-    display: none;
-  }
-  .code-annotation-copy > span {
-    -webkit-line-clamp: 2;
-  }
+/* レールが狭い（300px 未満）ときは番号列を詰め、本文を 2 行に落とす。 */
+.code-viewer.is-narrow-annotations .code-annotation-card {
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+.code-viewer.is-narrow-annotations .code-annotation-select {
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+.code-viewer.is-narrow-annotations .code-annotation-offscreen {
+  display: none;
+}
+.code-viewer.is-narrow-annotations .code-annotation-body {
+  -webkit-line-clamp: 2;
 }
 
 @media (prefers-reduced-motion: reduce) {

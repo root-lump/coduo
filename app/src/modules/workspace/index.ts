@@ -21,3 +21,4 @@ export {
   type WorkspacePhase,
 } from "./application/useWorkspace";
 export { ChangesPanel } from "./ui/ChangesPanel";
+export { parseFileReference, type FileReference } from "./fileReference";

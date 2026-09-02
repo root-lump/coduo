@@ -23,3 +23,4 @@ export {
   type ExplanationPanelProps,
 } from "./ui/ExplanationPanel";
 export { ReviewNavigation } from "./ui/ReviewNavigation";
+export { TourMarkdown, type TourMarkdownProps } from "./ui/TourMarkdown";
