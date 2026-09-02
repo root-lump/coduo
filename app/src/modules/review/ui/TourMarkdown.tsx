@@ -2,6 +2,7 @@
 // react-markdown は HTML 文字列を作らず React 要素を組み立てるので、リポジトリ由来の
 // 文字列が説明文に混ざっても HTML として解釈されない（raw HTML は既定で無視される）。
 import {
+  Fragment,
   createContext,
   useContext,
   type ComponentProps,
@@ -53,27 +54,42 @@ function Code({
 }: ComponentProps<"code"> & ExtraProps) {
   const inBlock = useContext(CodeBlockContext);
   const links = useContext(FileLinkContext);
+  const text = typeof children === "string" ? children : undefined;
   const reference =
-    !inBlock && typeof children === "string" && links
-      ? links.resolveFileReference(children)
+    !inBlock && text !== undefined && links
+      ? links.resolveFileReference(text)
       : undefined;
-  if (!reference || !links) {
+  if (!reference || !links || text === undefined) {
     return <code {...props}>{children}</code>;
   }
   // 注釈カードの中でも使われるため、カード側の click（注釈の選択）と重ならないようにする。
-  const open = (event: MouseEvent<HTMLButtonElement>) => {
+  const open = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
     event.stopPropagation();
     links.onOpenFileReference(reference);
   };
+  // button だと Chrome が行をまたげない箱として扱い、長いパスが丸ごと次の行へ送られる。
+  // 本文の流れの中で折り返せるよう a 要素にし、役割は button として伝える。
+  // 折り返してよいのはディレクトリ区切りの直後だけにする。セグメント（ファイル名と
+  // 行番号を含む）の途中で切れると、パスとして読めなくなる。
+  const segments = text.split("/");
   return (
-    <button
-      type="button"
+    <a
+      href="#"
+      role="button"
       className="tour-file-link"
       onClick={open}
       title={`${reference.file} を開く`}
     >
-      {children}
-    </button>
+      {segments.map((segment, index) => (
+        <Fragment key={index}>
+          {index > 0 && <wbr />}
+          <span className="tour-file-link-segment">
+            {index < segments.length - 1 ? `${segment}/` : segment}
+          </span>
+        </Fragment>
+      ))}
+    </a>
   );
 }
 
