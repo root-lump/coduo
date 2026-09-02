@@ -11,10 +11,12 @@ import { usePanelSizing } from "../modules/layout";
 import { shouldOfferDiff, type ViewMode } from "../modules/viewer";
 import { useZoom } from "../modules/zoom";
 import type { AppServices } from "./composition";
+import type { InitialView } from "./initialViewFor";
 
 export function useAppController(
   services: AppServices,
   initialMode: ReviewMode,
+  initialView: InitialView,
 ) {
   const workspace = useWorkspace(services.workspaceGateway);
   const zoom = useZoom(services.webviewZoom);
@@ -150,9 +152,12 @@ export function useAppController(
 
   // 差分モードはファイルを切り替えても Tour のステップを移動しても保つ
   // （変更ファイルを続けて見るとき、ファイルごとに押し直さずに済む）。
+  // 初期値は payload の出自から決まる（initialViewFor）。
   // 差分を出せないファイルでは表示側がコードモードへ落ちる。
-  const [viewMode, setViewMode] = useState<ViewMode>("code");
-  const [renderSideBySide, setRenderSideBySide] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>(initialView.viewMode);
+  const [renderSideBySide, setRenderSideBySide] = useState(
+    initialView.renderSideBySide,
+  );
 
   // ---- 描画用の導出値 ----
   const activeChange = snapshot?.changes.find(

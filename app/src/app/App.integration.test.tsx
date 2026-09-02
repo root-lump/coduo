@@ -4,7 +4,7 @@
 // Coduo ではローカルピッカーが無く、snapshot の展開と Tour の読み込みは
 // 起動時に自動で行われる。
 import { fireEvent, render, screen } from "@testing-library/react";
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import {
@@ -19,8 +19,16 @@ import type { AgentReviewResult } from "../modules/review";
 
 // Monaco は jsdom で動かないため、App レベルではファイルパスと表示モードだけ映す stub にする。
 vi.mock("../modules/viewer/ui/CodeViewer", () => ({
-  CodeViewer: (props: { file?: { path: string }; viewMode: string }) => (
-    <div data-testid="code-viewer" data-view-mode={props.viewMode}>
+  CodeViewer: (props: {
+    file?: { path: string };
+    viewMode: string;
+    renderSideBySide: boolean;
+  }) => (
+    <div
+      data-testid="code-viewer"
+      data-view-mode={props.viewMode}
+      data-side-by-side={String(props.renderSideBySide)}
+    >
       {props.file?.path ?? "(ファイル未選択)"}
     </div>
   ),
@@ -32,13 +40,16 @@ const testSource = {
   revision: "0000000000000000000000000000000000000000",
 } as const;
 
-function renderApp() {
+type RenderOptions = Partial<
+  Pick<ComponentProps<typeof App>, "source" | "initialMode">
+>;
+
+function renderApp({
+  source = testSource,
+  initialMode = "repository",
+}: RenderOptions = {}) {
   return render(
-    <App
-      services={fakeServices()}
-      source={testSource}
-      initialMode="repository"
-    />,
+    <App services={fakeServices()} source={source} initialMode={initialMode} />,
   );
 }
 
@@ -125,5 +136,33 @@ describe("表示モード", () => {
       "main から呼ばれます",
     );
     expect(viewer.getAttribute("data-view-mode")).toBe("diff");
+  });
+});
+
+describe("既定の表示モード", () => {
+  it("PR の payload は差分の 1 画面表示で始まる", async () => {
+    fakeWorkspaceGateway.loadPatch.mockResolvedValue(
+      ["@@ -1,3 +1,3 @@", " pub fn answer() -> u32 {", "-    41", "+    42", " }"].join(
+        "\n",
+      ),
+    );
+    fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
+    renderApp({
+      source: {
+        kind: "pull_request",
+        name: "example/demo-repo",
+        revision: "1111111111111111111111111111111111111111",
+        baseRevision: "0000000000000000000000000000000000000000",
+      },
+      initialMode: "pull_request",
+    });
+
+    await screen.findByText("デモリポジトリのレビュー");
+    // patch の読み込みが終わって差分を出せるようになると、切り替えボタンが出る。
+    // 既定が 1 画面表示なので、2 つ目のボタンは「並べて見る」になる。
+    await screen.findByRole("button", { name: "並べて見る" });
+    const viewer = screen.getByTestId("code-viewer");
+    expect(viewer.getAttribute("data-view-mode")).toBe("diff");
+    expect(viewer.getAttribute("data-side-by-side")).toBe("false");
   });
 });
