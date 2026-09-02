@@ -1,11 +1,11 @@
 // アプリ全体のオーケストレーション。
 // module 間をまたぐ配線（snapshot の自動展開・Tour の自動読み込み・
 // レビューのフォーカス追従）を持ち、App.tsx はこの controller の結果を描画するだけにする。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CodeTarget, ReviewMode, ReviewRequest } from "../modules/review";
 import { useAgentReview, useReviewController } from "../modules/review";
-import type { FileContent } from "../modules/workspace";
-import { useWorkspace } from "../modules/workspace";
+import type { FileContent, FileReference } from "../modules/workspace";
+import { parseFileReference, useWorkspace } from "../modules/workspace";
 import type { SymbolIndex } from "../shared/snapshot/SymbolIndex";
 import { usePanelSizing } from "../modules/layout";
 import { shouldOfferDiff, type ViewMode } from "../modules/viewer";
@@ -115,6 +115,22 @@ export function useAppController(
     setJump((current) => ({ target, token: current.token + 1 }));
   };
 
+  // 説明文中のファイル参照（`path` / `path:行`）。行指定があれば定義ジャンプと同じ
+  // 経路で位置まで移し、無ければ手動選択と同じくファイルを開くだけにする。
+  const filePaths = useMemo(
+    () => new Set(snapshot?.files.map((file) => file.path) ?? []),
+    [snapshot],
+  );
+  const resolveFileReference = (text: string) =>
+    parseFileReference(text, filePaths);
+  const openFileReference = (reference: FileReference) => {
+    if (reference.range) {
+      jumpToLocation({ file: reference.file, range: reference.range });
+    } else {
+      selectFileManually(reference.file);
+    }
+  };
+
   const generate = (mode: ReviewMode) => {
     void (async () => {
       let request: ReviewRequest;
@@ -191,6 +207,7 @@ export function useAppController(
       retry,
       selectFileManually,
       jumpToLocation,
+      openFileReference,
       toggleViewMode: () =>
         setViewMode((current) => (current === "code" ? "diff" : "code")),
       toggleSideBySide: () => setRenderSideBySide((current) => !current),
@@ -205,6 +222,7 @@ export function useAppController(
       hasReviewNavigation,
       navigationFiles,
       symbolIndex,
+      resolveFileReference,
       jumpTarget: jump.target,
       jumpToken: jump.token,
     },

@@ -3,10 +3,10 @@ import { AppHeader } from "./shell/AppHeader";
 import { ChangesPanel } from "../modules/workspace";
 import { EmptyWorkspace } from "./shell/EmptyWorkspace";
 import { ExplanationPanel } from "../modules/review";
-import { PanelResizeHandle } from "./shell/PanelResizeHandle";
 import { ReviewNavigation } from "../modules/review";
 import type { ReviewMode } from "../modules/review";
 import type { CoduoSourceMeta } from "../infrastructure/artifact/payload";
+import { PanelResizeHandle } from "../modules/layout";
 
 // Coduo の生成エージェントは Claude 固定（D3 承認済み差分でセレクターを持たない）。
 const AGENT_LABEL_TEXT = "Claude";
@@ -124,8 +124,9 @@ function App({ services, source, initialMode }: AppProps) {
             />
             <PanelResizeHandle
               label="ファイル一覧の横幅を調整"
-              side="left"
-              onResizeStart={panelSizing.startResize}
+              onResizeStart={(clientX) =>
+                panelSizing.startResize("left", clientX)
+              }
             />
           </>
         )}
@@ -203,6 +204,8 @@ function App({ services, source, initialMode }: AppProps) {
                 navigationFiles={derived.navigationFiles}
                 symbolIndex={derived.symbolIndex}
                 onOpenLocation={actions.jumpToLocation}
+                resolveFileReference={derived.resolveFileReference}
+                onOpenFileReference={actions.openFileReference}
                 jumpTarget={derived.jumpTarget}
                 jumpToken={derived.jumpToken}
               />
@@ -213,8 +216,7 @@ function App({ services, source, initialMode }: AppProps) {
 
         <PanelResizeHandle
           label="説明パネルの横幅を調整"
-          side="right"
-          onResizeStart={panelSizing.startResize}
+          onResizeStart={(clientX) => panelSizing.startResize("right", clientX)}
         />
 
         <ExplanationPanel
@@ -227,6 +229,8 @@ function App({ services, source, initialMode }: AppProps) {
             isExploring: review.isExploring,
             mode: agentReview.request?.kind,
             warnings: agentReview.warnings ?? [],
+            resolveFileReference: derived.resolveFileReference,
+            onOpenFileReference: actions.openFileReference,
             onResume: review.resumeReview,
             onSelectStep: review.goToStep,
           }}

@@ -35,7 +35,8 @@ export function annotationAtPosition(
   );
 }
 
-export const ANNOTATION_CARD_HEIGHT = 128;
+/** 見出しの 2 行目（22px）まで含めた通常カードの高さ。viewer.css の max-height と揃える。 */
+export const ANNOTATION_CARD_HEIGHT = 150;
 export const ANNOTATION_CARD_GAP = 13;
 export const ANNOTATION_RAIL_MARGIN = 18;
 /** 選択中のカードは説明を全文表示するため、レイアウト上もこの高さを占有する。 */

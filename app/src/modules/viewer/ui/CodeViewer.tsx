@@ -1,15 +1,17 @@
 // コードビューアの view。Monaco のライフサイクルは useMonacoViewer が持ち、
 // ここでは placeholder / エディタ / 注釈レイヤの表示だけを組み立てる。
 import Editor, { DiffEditor } from "@monaco-editor/react";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { CodeAnnotationLayer } from "./CodeAnnotationLayer";
 import type { CodeAnnotation, CodeTarget } from "../../review";
-import type { ChangedLine, FileContent } from "../../workspace";
+import type { ChangedLine, FileContent, FileReference } from "../../workspace";
 import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
+import { PanelResizeHandle } from "../../layout";
 import type { ViewMode } from "../diffView";
 import { languageFromPath } from "../language";
 import { unavailableMessageFor } from "../unavailableMessage";
 import { CODUO_THEME } from "../monacoEnvironment";
+import { useAnnotationRailSizing } from "./useAnnotationRailSizing";
 import { useMonacoViewer } from "./useMonacoViewer";
 
 /** コードモードと差分モードで見た目を揃えるための共通オプション。 */
@@ -53,6 +55,9 @@ type CodeViewerProps = {
   navigationFiles: FileContent[];
   symbolIndex: SymbolIndex | null;
   onOpenLocation(target: CodeTarget): void;
+  /** 注釈本文のインラインコードをファイル参照として解釈する。 */
+  resolveFileReference(text: string): FileReference | undefined;
+  onOpenFileReference(reference: FileReference): void;
   jumpTarget?: CodeTarget;
   jumpToken: number;
   /** 差分モードで変更前後を左右に並べるか（false なら 1 画面に混ぜて出す）。 */
@@ -89,12 +94,18 @@ export function CodeViewer({
   navigationFiles,
   symbolIndex,
   onOpenLocation,
+  resolveFileReference,
+  onOpenFileReference,
   jumpTarget,
   jumpToken,
   renderSideBySide,
   viewMode,
 }: CodeViewerProps) {
   const [dismissedFocusToken, setDismissedFocusToken] = useState<number>();
+  const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const rail = useAnnotationRailSizing(viewerElement);
   const {
     anchors,
     handleDiffMount,
@@ -148,24 +159,48 @@ export function CodeViewer({
     focusToken,
     hasViewport: viewport.height > 0 && viewport.width > 0,
   });
-  const viewerClassName = `code-viewer${showAnnotations ? " has-code-annotations" : ""}`;
+  const viewerClassName = [
+    "code-viewer",
+    showAnnotations ? "has-code-annotations" : "",
+    showAnnotations && rail.isNarrow ? "is-narrow-annotations" : "",
+    rail.isResizing ? "is-resizing" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const viewerStyle = {
+    "--annotation-rail-width": `${rail.width}px`,
+  } as CSSProperties;
   const annotationLayer = showAnnotations ? (
-    <CodeAnnotationLayer
-      anchors={anchors}
-      annotations={annotations}
-      height={viewport.height}
-      onClose={() => setDismissedFocusToken(focusToken)}
-      onSelect={(id) => selectAnnotation(id, true)}
-      selectedId={selectedAnnotationId}
-      width={viewport.width}
-    />
+    <>
+      <PanelResizeHandle
+        className="code-annotation-resize-handle"
+        label="注釈パネルの横幅を調整"
+        onResizeStart={rail.startResize}
+      />
+      <CodeAnnotationLayer
+        anchors={anchors}
+        annotations={annotations}
+        height={viewport.height}
+        onClose={() => setDismissedFocusToken(focusToken)}
+        onSelect={(id) => selectAnnotation(id, true)}
+        resolveFileReference={resolveFileReference}
+        onOpenFileReference={onOpenFileReference}
+        selectedId={selectedAnnotationId}
+        width={viewport.width}
+      />
+    </>
   ) : null;
 
   // 差分モードでも注釈とフォーカス装飾は modified 側に付ける（useMonacoViewer）。
   // 変更行ガター装飾だけは Monaco の差分色と重なるため出さない。
   if (viewMode === "diff" && baseText !== undefined) {
     return (
-      <div className={viewerClassName} data-testid="code-viewer">
+      <div
+        className={viewerClassName}
+        data-testid="code-viewer"
+        ref={setViewerElement}
+        style={viewerStyle}
+      >
         <div className="code-editor-surface">
           <DiffEditor
             height="100%"
@@ -207,7 +242,12 @@ export function CodeViewer({
   }
 
   return (
-    <div className={viewerClassName} data-testid="code-viewer">
+    <div
+      className={viewerClassName}
+      data-testid="code-viewer"
+      ref={setViewerElement}
+      style={viewerStyle}
+    >
       <div className="code-editor-surface">
         <Editor
           height="100%"

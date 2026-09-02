@@ -9,6 +9,7 @@ import {
   type PanelWidths,
   type ResizeSide,
 } from "./panelSizing";
+import { usePointerDrag } from "./usePointerDrag";
 
 // 基準サイズを1.25倍にした際、旧バージョンの保存幅は狭すぎるため引き継がない。
 const STORAGE_KEY = "coduo.panel-widths.v1";
@@ -20,7 +21,6 @@ const browserPanelWidthStorage = () =>
 
 type ActiveResize = {
   side: ResizeSide;
-  startX: number;
   startWidths: PanelWidths;
 };
 
@@ -33,16 +33,16 @@ export function usePanelSizing(hasLeftPanel: boolean) {
     loadPanelWidths(browserPanelWidthStorage(), STORAGE_KEY),
   );
   const [widths, setWidths] = useState(widthsRef.current);
-  const [activeResize, setActiveResize] = useState<ActiveResize>();
+  const activeResizeRef = useRef<ActiveResize>(undefined);
+
+  const containerWidth = () =>
+    containerRef.current?.getBoundingClientRect().width ?? window.innerWidth;
 
   const updateWidths = useCallback(
     (next: PanelWidths, side?: ResizeSide) => {
-      const containerWidth =
-        containerRef.current?.getBoundingClientRect().width ??
-        window.innerWidth;
       const constrained = constrainPanelWidths(
         next,
-        containerWidth,
+        containerWidth(),
         hasLeftPanel,
         side,
       );
@@ -52,9 +52,32 @@ export function usePanelSizing(hasLeftPanel: boolean) {
     [hasLeftPanel],
   );
 
-  const startResize = useCallback((side: ResizeSide, clientX: number) => {
-    setActiveResize({ side, startX: clientX, startWidths: widthsRef.current });
-  }, []);
+  const drag = usePointerDrag({
+    onMove: (deltaX) => {
+      const active = activeResizeRef.current;
+      if (!active) {
+        return;
+      }
+      const resizedWidths = resizePanelFromDrag(
+        active.startWidths,
+        active.side,
+        deltaX,
+        containerWidth(),
+        hasLeftPanel,
+      );
+      widthsRef.current = resizedWidths;
+      setWidths(resizedWidths);
+    },
+  });
+  const startDrag = drag.start;
+
+  const startResize = useCallback(
+    (side: ResizeSide, clientX: number) => {
+      activeResizeRef.current = { side, startWidths: widthsRef.current };
+      startDrag(clientX);
+    },
+    [startDrag],
+  );
 
   const attachContainer = useCallback((element: HTMLElement | null) => {
     containerRef.current = element;
@@ -62,47 +85,11 @@ export function usePanelSizing(hasLeftPanel: boolean) {
   }, []);
 
   useEffect(() => {
-    if (!activeResize) {
-      return;
-    }
-
-    document.documentElement.classList.add("is-resizing-panels");
-
-    const handlePointerMove = (event: PointerEvent) => {
-      const delta = event.clientX - activeResize.startX;
-      const containerWidth =
-        containerRef.current?.getBoundingClientRect().width ??
-        window.innerWidth;
-      const resizedWidths = resizePanelFromDrag(
-        activeResize.startWidths,
-        activeResize.side,
-        delta,
-        containerWidth,
-        hasLeftPanel,
-      );
-      widthsRef.current = resizedWidths;
-      setWidths(resizedWidths);
-    };
-    const finishResize = () => setActiveResize(undefined);
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", finishResize, { once: true });
-    window.addEventListener("pointercancel", finishResize, { once: true });
-
-    return () => {
-      document.documentElement.classList.remove("is-resizing-panels");
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", finishResize);
-      window.removeEventListener("pointercancel", finishResize);
-    };
-  }, [activeResize, hasLeftPanel, updateWidths]);
-
-  useEffect(() => {
-    if (activeResize) {
+    if (drag.isDragging) {
       return;
     }
     savePanelWidths(browserPanelWidthStorage(), STORAGE_KEY, widths);
-  }, [activeResize, widths]);
+  }, [drag.isDragging, widths]);
 
   useEffect(() => {
     if (!containerElement) {
@@ -120,7 +107,7 @@ export function usePanelSizing(hasLeftPanel: boolean) {
   return {
     containerRef: attachContainer,
     widths,
-    isResizing: Boolean(activeResize),
+    isResizing: drag.isDragging,
     startResize,
   };
 }

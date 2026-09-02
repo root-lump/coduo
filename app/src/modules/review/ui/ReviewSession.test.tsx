@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ReviewTour } from "../domain";
+import { parseFileReference } from "../../workspace";
 import { ReviewSession } from "./ReviewSession";
 
 const tour: ReviewTour = {
@@ -20,7 +21,7 @@ const tour: ReviewTour = {
     {
       id: "step-2",
       title: "中核処理",
-      explanation: "中核の説明",
+      explanation: "**中核** の説明。`src/core.rs:2-4` を見ます。",
       target: {
         file: "src/core.rs",
         range: { startLine: 1, endLine: 5 },
@@ -36,6 +37,8 @@ function renderSession(
 ) {
   const onResume = vi.fn();
   const onSelectStep = vi.fn();
+  const onOpenFileReference = vi.fn();
+  const files = new Set(["src/core.rs"]);
   render(
     <ReviewSession
       tour={tour}
@@ -45,12 +48,14 @@ function renderSession(
       isExploring={false}
       mode="repository"
       warnings={[]}
+      resolveFileReference={(text) => parseFileReference(text, files)}
+      onOpenFileReference={onOpenFileReference}
       onResume={onResume}
       onSelectStep={onSelectStep}
       {...overrides}
     />,
   );
-  return { onResume, onSelectStep };
+  return { onResume, onSelectStep, onOpenFileReference };
 }
 
 describe("ReviewSession", () => {
@@ -75,6 +80,19 @@ describe("ReviewSession", () => {
   it("フォーカスのない概観ステップでは再開カードを出さない", () => {
     renderSession({ isExploring: true, currentStepIndex: 0 });
     expect(screen.queryByRole("button", { name: /レビューを再開/ })).toBeNull();
+  });
+
+  it("説明文を Markdown として描画し、ファイル参照の click を通知する", () => {
+    const { onOpenFileReference } = renderSession();
+    const explanation = screen.getByTestId("current-explanation");
+    expect(explanation.querySelector(".step-explanation strong")?.textContent).toBe(
+      "中核",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "src/core.rs:2-4" }));
+    expect(onOpenFileReference).toHaveBeenCalledWith({
+      file: "src/core.rs",
+      range: { startLine: 2, endLine: 4 },
+    });
   });
 
   it("注釈修復の劣化警告を表示する", () => {

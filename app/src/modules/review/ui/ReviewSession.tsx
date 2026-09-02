@@ -1,7 +1,9 @@
 // 生成済みツアーの表示（タイトル・現在ステップ・説明経路・再開・劣化警告）。
 import type { JumpRelation, ReviewMode, ReviewTour } from "../domain";
 import { relationLabel } from "../application/relation";
+import type { FileReference } from "../../workspace";
 import { reviewModeLabel } from "./SnapshotStatus";
+import { TourMarkdown } from "./TourMarkdown";
 
 export type ReviewSessionViewModel = {
   tour: ReviewTour;
@@ -12,6 +14,9 @@ export type ReviewSessionViewModel = {
   mode?: ReviewMode;
   /** ツアーは成立しているが利用者へ伝える劣化（注釈修復の失敗など）。 */
   warnings: string[];
+  /** 説明文のインラインコードをファイル参照として解釈する。 */
+  resolveFileReference(text: string): FileReference | undefined;
+  onOpenFileReference(reference: FileReference): void;
   onResume(): void;
   onSelectStep(index: number): void;
 };
@@ -24,6 +29,8 @@ export function ReviewSession({
   isExploring,
   mode,
   warnings,
+  resolveFileReference,
+  onOpenFileReference,
   onResume,
   onSelectStep,
 }: ReviewSessionViewModel) {
@@ -34,7 +41,12 @@ export function ReviewSession({
     <div className="review-body">
       <div className="active-review-mode">{reviewModeLabel(mode)}</div>
       <h1>{tour.title}</h1>
-      <p className="tour-summary">{tour.summary}</p>
+      <TourMarkdown
+        className="tour-summary"
+        text={tour.summary}
+        resolveFileReference={resolveFileReference}
+        onOpenFileReference={onOpenFileReference}
+      />
 
       {warnings.length > 0 && (
         <div className="review-warnings" role="note">
@@ -78,7 +90,12 @@ export function ReviewSession({
             )}
           </div>
           <h2>{step.title}</h2>
-          <p>{explanation ?? step.explanation}</p>
+          <TourMarkdown
+            className="step-explanation"
+            text={explanation ?? step.explanation}
+            resolveFileReference={resolveFileReference}
+            onOpenFileReference={onOpenFileReference}
+          />
           {stepHasFocus && (
             <div className="focus-legend">
               <span className="focus-swatch" aria-hidden="true" />

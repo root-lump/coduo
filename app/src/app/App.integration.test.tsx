@@ -3,7 +3,7 @@
 // gateway は AppServices として注入する（モジュールモック不要）。
 // Coduo ではローカルピッカーが無く、snapshot の展開と Tour の読み込みは
 // 起動時に自動で行われる。
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act, type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -23,13 +23,23 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
     file?: { path: string };
     viewMode: string;
     renderSideBySide: boolean;
+    jumpTarget?: { range: { startLine: number } };
+    onOpenFileReference(reference: { file: string }): void;
   }) => (
     <div
       data-testid="code-viewer"
       data-view-mode={props.viewMode}
       data-side-by-side={String(props.renderSideBySide)}
+      data-jump-line={props.jumpTarget?.range.startLine}
     >
       {props.file?.path ?? "(ファイル未選択)"}
+      {/* 注釈カードのファイルリンクの代わり。同じ経路で開けることを見る。 */}
+      <button
+        type="button"
+        onClick={() => props.onOpenFileReference({ file: "assets/logo.png" })}
+      >
+        注釈からロゴを開く
+      </button>
     </div>
   ),
 }));
@@ -164,5 +174,84 @@ describe("既定の表示モード", () => {
     const viewer = screen.getByTestId("code-viewer");
     expect(viewer.getAttribute("data-view-mode")).toBe("diff");
     expect(viewer.getAttribute("data-side-by-side")).toBe("false");
+  });
+});
+
+describe("説明文のファイル参照", () => {
+  const tourWithReferences: AgentReviewResult = {
+    ...fixtures.reviewResult,
+    tour: {
+      ...fixtures.reviewResult.tour,
+      steps: [
+        {
+          ...fixtures.reviewResult.tour.steps[0],
+          explanation:
+            "`assets/logo.png` は画像で、`src/lib.rs:2-3` が本体です。`src/missing.rs` は無い。",
+        },
+      ],
+    },
+  };
+
+  it("行指定の無い参照はファイルを開き、探索中になる", async () => {
+    fakeAgentGateway.review.mockResolvedValue(tourWithReferences);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    // 初期ステップのファイルが開き終わるのを待つ（開く途中で click すると、
+    // 後から完了した初期ステップの読み込みが表示を上書きする）。
+    await waitFor(() =>
+      expect(screen.getByTestId("code-viewer").textContent).toContain(
+        "src/lib.rs",
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "assets/logo.png" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("code-viewer").textContent).toContain(
+        "assets/logo.png",
+      ),
+    );
+    expect(screen.getByRole("button", { name: /レビューを再開/ })).toBeTruthy();
+    // snapshot に無いパスはリンクにならない。
+    expect(screen.queryByRole("button", { name: "src/missing.rs" })).toBeNull();
+  });
+
+  it("行指定のある参照はその位置へ移す", async () => {
+    fakeAgentGateway.review.mockResolvedValue(tourWithReferences);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    // 初期ステップのファイルが開き終わるのを待つ（開く途中で click すると、
+    // 後から完了した初期ステップの読み込みが表示を上書きする）。
+    await waitFor(() =>
+      expect(screen.getByTestId("code-viewer").textContent).toContain(
+        "src/lib.rs",
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "src/lib.rs:2-3" }));
+    await waitFor(() => {
+      const viewer = screen.getByTestId("code-viewer");
+      expect(viewer.getAttribute("data-jump-line")).toBe("2");
+      expect(viewer.textContent).toContain("src/lib.rs");
+    });
+  });
+
+  it("注釈側からも同じ経路でファイルを開ける", async () => {
+    fakeAgentGateway.review.mockResolvedValue(tourWithReferences);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    // 初期ステップのファイルが開き終わるのを待つ（開く途中で click すると、
+    // 後から完了した初期ステップの読み込みが表示を上書きする）。
+    await waitFor(() =>
+      expect(screen.getByTestId("code-viewer").textContent).toContain(
+        "src/lib.rs",
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "注釈からロゴを開く" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("code-viewer").textContent).toContain(
+        "assets/logo.png",
+      ),
+    );
   });
 });
