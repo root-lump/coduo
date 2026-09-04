@@ -11,6 +11,8 @@ const MAX_SUMMARY = 800;
 // ステップ名と注釈の見出しはビューアで 2 行まで折り返して表示する。上限はその幅に合わせる。
 const MAX_STEP_TITLE = 60;
 const MAX_ANNOTATION_LABEL = 36;
+// from（どの式から来たか）の種類。ビューアの HopKind と同じ値。
+const HOP_KINDS = ["callee", "data_flow", "return"];
 
 const [payloadPath, tourPath, tourKey] = process.argv.slice(2);
 if (!payloadPath || !tourPath || !tourKey) {
@@ -36,6 +38,25 @@ const snapshotPaths = new Set(
 const isPr = tourKey === "pull_request";
 const allowFileless = isPr || tourKey === "repository"; // 概観ステップ
 const lineCountOf = (path) => payload.fileContents[path]?.lineCount ?? 0;
+const lineTextOf = (path, line) =>
+  (payload.fileContents[path]?.content ?? "").split("\n")[line - 1];
+// symbolIndex の位置は 1 始まりの行と UTF-16 コード単位の列（symbol-index.mjs が生成）。
+// 索引は「宣言のある名前の出現」しか持たないので、名前が無いとき（ライブラリのメソッドや
+// 分割代入で作った名前）は照合しない。予算超過で出現を落とした（degraded）索引も同様。
+const symbolIndex = payload.symbolIndex;
+const symbolIndexKnows = (name) =>
+  Boolean(symbolIndex) &&
+  !symbolIndex.degraded &&
+  symbolIndex.symbols.some((symbol) => symbol.name === name);
+const symbolOccursAt = (name, file, line, column) => {
+  const pathIndex = symbolIndex.paths.indexOf(file);
+  const entry = symbolIndex.symbols.find((symbol) => symbol.name === name);
+  if (pathIndex < 0 || !entry) return false;
+  const matches = (position) =>
+    position[0] === pathIndex && position[1] === line && position[2] === column;
+  return entry.occurrences.some(matches) || entry.declarations.some(matches);
+};
+let hopCount = 0;
 
 // 説明文（Markdown）のインラインコードのうち、ファイルパスの形をしているのに
 // snapshot に無いものを拾う。グロブなど正当な用途もあるので警告に留める。
@@ -87,6 +108,7 @@ else {
       if ((step.annotations ?? []).length > 0) {
         push(`${at}: 概観ステップに annotation は置けません`);
       }
+      if (step.from != null) push(`${at}: 概観ステップに from は置けません`);
       continue;
     }
     const checkTarget = (t, label, parentRange) => {
@@ -112,6 +134,64 @@ else {
       }
     };
     checkTarget(target, at);
+    // from は直前ステップの範囲内にある 1 行の式を列まで正確に指す。ファイル・行・列・
+    // シンボル名の食い違いはエラー（fail closed）。直前ステップの範囲外だけは警告に留める
+    // （分割表示は成立し、クリックできる印が出ないだけのため）。
+    const checkOrigin = (from, label) => {
+      if (!HOP_KINDS.includes(from.kind)) {
+        push(`${label}: kind が不正です: ${from.kind}`);
+      }
+      const before = errors.length;
+      checkTarget(from, label);
+      if (errors.length > before) return;
+      const r = from.range;
+      if (r.startLine !== r.endLine) {
+        push(`${label}: from は 1 行の式を指してください (${r.startLine}-${r.endLine})`);
+        return;
+      }
+      const lineText = lineTextOf(from.file, r.startLine) ?? "";
+      const validColumn = (value) => Number.isInteger(value) && value >= 1;
+      if (
+        !validColumn(r.startColumn) ||
+        !validColumn(r.endColumn) ||
+        r.endColumn <= r.startColumn ||
+        r.endColumn > lineText.length + 1
+      ) {
+        push(
+          `${label}: 列が不正です (${r.startColumn}-${r.endColumn} / 行の長さ ${lineText.length})`,
+        );
+        return;
+      }
+      if (from.symbol != null) {
+        const actual = lineText.slice(r.startColumn - 1, r.endColumn - 1);
+        if (actual !== from.symbol) {
+          push(`${label}: 範囲の本文 "${actual}" が symbol "${from.symbol}" と一致しません`);
+          return;
+        }
+        if (!symbolIndex) {
+          warnings.push(`${label}: symbolIndex が無いので symbol を索引と突き合わせられません`);
+        } else if (
+          symbolIndexKnows(from.symbol) &&
+          !symbolOccursAt(from.symbol, from.file, r.startLine, r.startColumn)
+        ) {
+          push(`${label}: symbol "${from.symbol}" が symbolIndex のその位置にありません`);
+          return;
+        }
+      }
+      const previous = tour.steps[index - 1]?.target;
+      const insidePrevious =
+        previous &&
+        previous.file === from.file &&
+        r.startLine >= previous.range.startLine &&
+        r.startLine <= previous.range.endLine;
+      if (!insidePrevious) {
+        warnings.push(
+          `${label}: 直前ステップの範囲外にあるので、クリックできる印は出ません`,
+        );
+      }
+      hopCount += 1;
+    };
+    if (step.from != null) checkOrigin(step.from, `${at}.from`);
     for (const [ai, annotation] of (step.annotations ?? []).entries()) {
       const alabel = `${at}.annotations[${ai}]`;
       if (!annotation.id) push(`${alabel}: id が空です`);
@@ -143,5 +223,6 @@ if (errors.length > 0) {
 }
 console.error(
   `validate-tour: ${tourKey} OK (${tour.steps.length} steps, ` +
-    `${tour.steps.reduce((n, s) => n + (s.annotations?.length ?? 0), 0)} annotations)`,
+    `${tour.steps.reduce((n, s) => n + (s.annotations?.length ?? 0), 0)} annotations, ` +
+    `${hopCount} hops)`,
 );
