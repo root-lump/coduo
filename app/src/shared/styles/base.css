@@ -54,6 +54,10 @@
   --amber: #e2ae57;
   --red: #ef6a71;
   --cyan: #61c6d7;
+  /* Tour の from（踏み込む / 値を追う / 戻る）。右パネルのバッジとエディタの装飾で共用する。 */
+  --hop-callee: #e2ae57;
+  --hop-data-flow: #50d8c3;
+  --hop-return: #61c6d7;
 }
 
 * {

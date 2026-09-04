@@ -8,7 +8,11 @@ import type { FileContent, FileReference } from "../modules/workspace";
 import { parseFileReference, useWorkspace } from "../modules/workspace";
 import type { SymbolIndex } from "../shared/snapshot/SymbolIndex";
 import { usePanelSizing } from "../modules/layout";
-import { shouldOfferDiff, type ViewMode } from "../modules/viewer";
+import {
+  shouldOfferDiff,
+  type NextHop,
+  type ViewMode,
+} from "../modules/viewer";
 import { useZoom } from "../modules/zoom";
 import type { AppServices } from "./composition";
 import type { InitialView } from "./initialViewFor";
@@ -192,6 +196,27 @@ export function useAppController(
     agentReview.status === "ready" && activeFocus
       ? (review.resolvedStep?.annotations ?? [])
       : [];
+  // 処理の流れを追う表示。今のステップの from（呼び出し元）は、ツアーに追従している
+  // ときだけ上段に出す。本文は起動時に一括取得した navigationFiles から引く
+  // （workspace.openFile は表示中ファイルを切り替えてしまうので使えない）。
+  const origin = review.resolvedStep?.origin;
+  const originFile =
+    activeFocus && origin
+      ? navigationFiles.find((candidate) => candidate.path === origin.file)
+      : undefined;
+  const flowOrigin =
+    origin && originFile ? { origin, file: originFile } : undefined;
+  // 次のステップの from が今のファイル内にあれば、その式をクリックで進む印にする。
+  const nextOrigin = tour.steps[review.currentStepIndex + 1]?.from;
+  const nextHop: NextHop | undefined =
+    nextOrigin &&
+    !review.isExploring &&
+    workspace.activeFile?.path === nextOrigin.file
+      ? {
+          kind: nextOrigin.kind,
+          target: { file: nextOrigin.file, range: nextOrigin.range },
+        }
+      : undefined;
   const hasReviewNavigation =
     agentReview.status === "ready" && tour.steps.length > 0;
   const panelSizing = usePanelSizing(snapshot?.selectionKind === "directory");
@@ -208,6 +233,7 @@ export function useAppController(
       selectFileManually,
       jumpToLocation,
       openFileReference,
+      advanceHop: review.goNext,
       toggleViewMode: () =>
         setViewMode((current) => (current === "code" ? "diff" : "code")),
       toggleSideBySide: () => setRenderSideBySide((current) => !current),
@@ -219,6 +245,8 @@ export function useAppController(
       viewMode: effectiveViewMode,
       activeFocus,
       codeAnnotations,
+      flowOrigin,
+      nextHop,
       hasReviewNavigation,
       navigationFiles,
       symbolIndex,

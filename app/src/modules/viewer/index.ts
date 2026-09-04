@@ -13,3 +13,5 @@ export type {
 } from "./codeNavigation";
 export { shouldOfferDiff } from "./diffView";
 export type { ViewMode } from "./diffView";
+export type { NextHop } from "./flowDecorations";
+export { paneLabels } from "./flowLabels";

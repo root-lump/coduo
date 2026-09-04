@@ -979,6 +979,51 @@
   text-transform: none;
 }
 
+/* from（どの式から来たか）のバッジ。色は種類ごとにビューアの装飾と揃える。 */
+/* バッジが長いときは「ステップ N」ではなくバッジ側（パス）を縮める。 */
+.step-meta > span:first-child {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.hop-badge {
+  display: flex;
+  flex-shrink: 1;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--hop-color) 14%, transparent);
+  color: var(--hop-color);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* パスは長くなりがちなので、バッジが横幅を超えるときはパスの側を省略する。 */
+.hop-badge code {
+  overflow: hidden;
+  margin-left: 2px;
+  font-family: "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 0.92em;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  direction: rtl;
+  opacity: 0.85;
+}
+
+.hop-badge--callee {
+  --hop-color: var(--hop-callee);
+}
+.hop-badge--data_flow {
+  --hop-color: var(--hop-data-flow);
+}
+.hop-badge--return {
+  --hop-color: var(--hop-return);
+}
+
 .current-explanation h2 {
   margin: 11px 0 9px;
   color: #e3e4e9;

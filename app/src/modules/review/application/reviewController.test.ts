@@ -77,6 +77,32 @@ describe("resolveReviewStep", () => {
   it("returns undefined when a tour has no step", () => {
     expect(resolveReviewStep(undefined)).toBeUndefined();
   });
+
+  it("carries the step origin (from) over as origin", () => {
+    const step: ReviewStep = {
+      id: "callee",
+      title: "Callee",
+      explanation: "踏み込んだ先",
+      target: { file: "lib.rs", range: { startLine: 1, endLine: 3 } },
+      relation: null,
+      from: {
+        kind: "callee",
+        file: "main.rs",
+        range: { startLine: 5, startColumn: 9, endLine: 5, endColumn: 15 },
+        symbol: "answer",
+      },
+      annotations: [],
+    };
+
+    expect(resolveReviewStep(step)?.origin).toEqual({
+      kind: "callee",
+      file: "main.rs",
+      range: { startLine: 5, startColumn: 9, endLine: 5, endColumn: 15 },
+      symbol: "answer",
+    });
+    expect(resolveReviewStep({ ...step, from: null })?.origin).toBeUndefined();
+    expect(resolveReviewStep({ ...step, from: undefined })?.origin).toBeUndefined();
+  });
 });
 
 describe("isReviewShortcut", () => {

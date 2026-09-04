@@ -1,6 +1,11 @@
 // 生成済みツアーの表示（タイトル・現在ステップ・説明経路・再開・劣化警告）。
-import type { JumpRelation, ReviewMode, ReviewTour } from "../domain";
-import { relationLabel } from "../application/relation";
+import type {
+  JumpRelation,
+  ReviewMode,
+  ReviewTour,
+  StepOrigin,
+} from "../domain";
+import { hopLabel, relationLabel } from "../application/relation";
 import type { FileReference } from "../../workspace";
 import { reviewModeLabel } from "./SnapshotStatus";
 import { TourMarkdown } from "./TourMarkdown";
@@ -10,6 +15,8 @@ export type ReviewSessionViewModel = {
   currentStepIndex: number;
   explanation?: string;
   relation?: JumpRelation;
+  /** どの式から来たか。あれば relation の代わりにこちらをバッジに出す。 */
+  origin?: StepOrigin;
   isExploring: boolean;
   mode?: ReviewMode;
   /** ツアーは成立しているが利用者へ伝える劣化（注釈修復の失敗など）。 */
@@ -26,6 +33,7 @@ export function ReviewSession({
   currentStepIndex,
   explanation,
   relation,
+  origin,
   isExploring,
   mode,
   warnings,
@@ -83,10 +91,20 @@ export function ReviewSession({
                 コード注釈 {step.annotations.length}
               </span>
             )}
-            {relation && (
-              <span className="relation-badge">
-                <span aria-hidden="true">↗</span> {relationLabel(relation)}
+            {origin ? (
+              <span className={`hop-badge hop-badge--${origin.kind}`}>
+                <span aria-hidden="true">{hopLabel(origin.kind).glyph}</span>{" "}
+                {hopLabel(origin.kind).label}
+                <code>
+                  {origin.file}:{origin.range.startLine}
+                </code>
               </span>
+            ) : (
+              relation && (
+                <span className="relation-badge">
+                  <span aria-hidden="true">↗</span> {relationLabel(relation)}
+                </span>
+              )
             )}
           </div>
           <h2>{step.title}</h2>

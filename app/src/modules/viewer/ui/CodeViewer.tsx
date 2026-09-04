@@ -1,47 +1,26 @@
 // コードビューアの view。Monaco のライフサイクルは useMonacoViewer が持ち、
 // ここでは placeholder / エディタ / 注釈レイヤの表示だけを組み立てる。
+// Tour の from があるステップでは、呼び出し元（FlowOriginPane）を上段に足して 2 段にする。
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useState, type CSSProperties } from "react";
+import type { editor } from "monaco-editor";
 import { CodeAnnotationLayer } from "./CodeAnnotationLayer";
-import type { CodeAnnotation, CodeTarget } from "../../review";
+import type { CodeAnnotation, CodeTarget, StepOrigin } from "../../review";
 import type { ChangedLine, FileContent, FileReference } from "../../workspace";
 import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
 import { PanelResizeHandle } from "../../layout";
 import type { ViewMode } from "../diffView";
+import type { NextHop } from "../flowDecorations";
+import { paneLabels } from "../flowLabels";
 import { languageFromPath } from "../language";
 import { unavailableMessageFor } from "../unavailableMessage";
 import { CODUO_THEME } from "../monacoEnvironment";
+import { SHARED_EDITOR_OPTIONS } from "./editorOptions";
+import { FlowConnector } from "./FlowConnector";
+import { FlowOriginPane } from "./FlowOriginPane";
 import { useAnnotationRailSizing } from "./useAnnotationRailSizing";
+import { useFlowConnector } from "./useFlowConnector";
 import { useMonacoViewer } from "./useMonacoViewer";
-
-/** コードモードと差分モードで見た目を揃えるための共通オプション。 */
-const SHARED_EDITOR_OPTIONS = {
-  readOnly: true,
-  domReadOnly: true,
-  automaticLayout: true,
-  smoothScrolling: true,
-  cursorSmoothCaretAnimation: "on",
-  fontFamily:
-    '"SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace',
-  fontSize: 14,
-  lineHeight: 23,
-  fontLigatures: true,
-  glyphMargin: false,
-  folding: true,
-  padding: { top: 23, bottom: 30 },
-  renderLineHighlight: "line",
-  roundedSelection: false,
-  scrollBeyondLastLine: false,
-  scrollbar: {
-    verticalScrollbarSize: 13,
-    horizontalScrollbarSize: 13,
-  },
-  stickyScroll: { enabled: true },
-  wordWrap: "off",
-  overviewRulerBorder: false,
-  overviewRulerLanes: 3,
-  contextmenu: true,
-} as const;
 
 type CodeViewerProps = {
   annotations: CodeAnnotation[];
@@ -63,6 +42,11 @@ type CodeViewerProps = {
   /** 差分モードで変更前後を左右に並べるか（false なら 1 画面に混ぜて出す）。 */
   renderSideBySide: boolean;
   viewMode: ViewMode;
+  /** 今のステップの from。あれば呼び出し元を上段に出して 2 段にする。 */
+  flowOrigin?: { origin: StepOrigin; file: FileContent };
+  /** 次のステップの from が今のファイル内にあるとき、その式。クリックで進む印になる。 */
+  nextHop?: NextHop;
+  onAdvanceHop(): void;
 };
 
 type AnnotationRenderState = {
@@ -100,14 +84,25 @@ export function CodeViewer({
   jumpToken,
   renderSideBySide,
   viewMode,
+  flowOrigin,
+  nextHop,
+  onAdvanceHop,
 }: CodeViewerProps) {
   const [dismissedFocusToken, setDismissedFocusToken] = useState<number>();
+  // 注釈レールの幅とレイアウトの基準。分割表示では下段のペインを指す。
   const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(
     null,
   );
+  const [splitElement, setSplitElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const [originEditor, setOriginEditor] = useState<
+    editor.ICodeEditor | undefined
+  >(undefined);
   const rail = useAnnotationRailSizing(viewerElement);
   const {
     anchors,
+    editorInstance,
     handleDiffMount,
     handleMount,
     selectAnnotation,
@@ -124,6 +119,15 @@ export function CodeViewer({
     onOpenLocation,
     jumpTarget,
     jumpToken,
+    nextHop,
+    onAdvanceHop,
+  });
+  const connector = useFlowConnector({
+    container: splitElement,
+    topEditor: originEditor,
+    bottomEditor: editorInstance,
+    origin: flowOrigin?.origin,
+    focus,
   });
 
   if (!file) {
@@ -193,7 +197,65 @@ export function CodeViewer({
 
   // 差分モードでも注釈とフォーカス装飾は modified 側に付ける（useMonacoViewer）。
   // 変更行ガター装飾だけは Monaco の差分色と重なるため出さない。
-  if (viewMode === "diff" && baseText !== undefined) {
+  const editorElement =
+    viewMode === "diff" && baseText !== undefined ? (
+      <DiffEditor
+        height="100%"
+        original={baseText}
+        modified={file.content}
+        // 差分エディタは左右とも専用 URI のモデルを使い、コードモードの
+        // モデルを共有しない。共有すると、モードを切り替えたときに片方の
+        // unmount がもう片方の使っているモデルを破棄し、DiffEditorWidget が
+        // 「reset 前に model が破棄された」と例外を投げる。
+        originalModelPath={`file://coduo-diff-base/${file.path}`}
+        modifiedModelPath={`file://coduo-diff-head/${file.path}`}
+        // 専用モデルは破棄せず URI ごとに再利用する（破棄の順序に依存しない）。
+        keepCurrentOriginalModel
+        keepCurrentModifiedModel
+        language={language}
+        theme={CODUO_THEME}
+        loading={
+          <div className="viewer-loading">エディタを準備しています…</div>
+        }
+        onMount={handleDiffMount}
+        options={{
+          ...SHARED_EDITOR_OPTIONS,
+          readOnly: true,
+          originalEditable: false,
+          renderSideBySide,
+          // 変更のない範囲は畳んで、変わった箇所だけを追えるようにする。
+          hideUnchangedRegions: { enabled: true },
+          renderOverviewRuler: true,
+          // 読み取り専用なので、行余白の revert アイコンと余白メニューは出さない。
+          renderMarginRevertIcon: false,
+          renderGutterMenu: false,
+          minimap: { enabled: false },
+        }}
+      />
+    ) : (
+      <Editor
+        height="100%"
+        path={`file://${file.path}`}
+        value={file.content}
+        language={language}
+        theme={CODUO_THEME}
+        loading={
+          <div className="viewer-loading">エディタを準備しています…</div>
+        }
+        onMount={handleMount}
+        options={{
+          ...SHARED_EDITOR_OPTIONS,
+          minimap: {
+            enabled: !showAnnotations,
+            scale: 1,
+            showSlider: "mouseover",
+            maxColumn: 80,
+          },
+        }}
+      />
+    );
+
+  if (!flowOrigin) {
     return (
       <div
         className={viewerClassName}
@@ -201,76 +263,44 @@ export function CodeViewer({
         ref={setViewerElement}
         style={viewerStyle}
       >
-        <div className="code-editor-surface">
-          <DiffEditor
-            height="100%"
-            original={baseText}
-            modified={file.content}
-            // 差分エディタは左右とも専用 URI のモデルを使い、コードモードの
-            // モデルを共有しない。共有すると、モードを切り替えたときに片方の
-            // unmount がもう片方の使っているモデルを破棄し、DiffEditorWidget が
-            // 「reset 前に model が破棄された」と例外を投げる。
-            originalModelPath={`file://coduo-diff-base/${file.path}`}
-            modifiedModelPath={`file://coduo-diff-head/${file.path}`}
-            // 専用モデルは破棄せず URI ごとに再利用する（破棄の順序に依存しない）。
-            keepCurrentOriginalModel
-            keepCurrentModifiedModel
-            language={language}
-            theme={CODUO_THEME}
-            loading={
-              <div className="viewer-loading">エディタを準備しています…</div>
-            }
-            onMount={handleDiffMount}
-            options={{
-              ...SHARED_EDITOR_OPTIONS,
-              readOnly: true,
-              originalEditable: false,
-              renderSideBySide,
-              // 変更のない範囲は畳んで、変わった箇所だけを追えるようにする。
-              hideUnchangedRegions: { enabled: true },
-              renderOverviewRuler: true,
-              // 読み取り専用なので、行余白の revert アイコンと余白メニューは出さない。
-              renderMarginRevertIcon: false,
-              renderGutterMenu: false,
-              minimap: { enabled: false },
-            }}
-          />
-        </div>
+        <div className="code-editor-surface">{editorElement}</div>
         {annotationLayer}
       </div>
     );
   }
 
+  const labels = paneLabels(flowOrigin.origin.kind);
+  const kindClass = `flow-kind-${flowOrigin.origin.kind}`;
   return (
     <div
-      className={viewerClassName}
+      className={`code-viewer-split ${kindClass}`}
       data-testid="code-viewer"
-      ref={setViewerElement}
-      style={viewerStyle}
+      ref={setSplitElement}
     >
-      <div className="code-editor-surface">
-        <Editor
-          height="100%"
-          path={`file://${file.path}`}
-          value={file.content}
-          language={language}
-          theme={CODUO_THEME}
-          loading={
-            <div className="viewer-loading">エディタを準備しています…</div>
-          }
-          onMount={handleMount}
-          options={{
-            ...SHARED_EDITOR_OPTIONS,
-            minimap: {
-              enabled: !showAnnotations,
-              scale: 1,
-              showSlider: "mouseover",
-              maxColumn: 80,
-            },
-          }}
+      <div className="flow-pane-bar flow-pane-bar--origin">
+        <span className="flow-pane-path">{flowOrigin.file.path}</span>
+        <span className="flow-pane-role">{labels.top}</span>
+      </div>
+      <div className="flow-pane flow-pane--origin">
+        <FlowOriginPane
+          file={flowOrigin.file}
+          origin={flowOrigin.origin}
+          onEditor={setOriginEditor}
         />
       </div>
-      {annotationLayer}
+      <div className="flow-pane-bar flow-pane-bar--target">
+        <span className="flow-pane-path">{file.path}</span>
+        <span className="flow-pane-role">{labels.bottom}</span>
+      </div>
+      <div
+        className={`${viewerClassName} flow-pane flow-pane--target`}
+        ref={setViewerElement}
+        style={viewerStyle}
+      >
+        <div className="code-editor-surface">{editorElement}</div>
+        {annotationLayer}
+      </div>
+      <FlowConnector path={connector} />
     </div>
   );
 }

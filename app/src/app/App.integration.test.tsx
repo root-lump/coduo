@@ -25,12 +25,17 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
     renderSideBySide: boolean;
     jumpTarget?: { range: { startLine: number } };
     onOpenFileReference(reference: { file: string }): void;
+    flowOrigin?: { origin: { file: string } };
+    nextHop?: { target: { range: { startLine: number } } };
+    onAdvanceHop(): void;
   }) => (
     <div
       data-testid="code-viewer"
       data-view-mode={props.viewMode}
       data-side-by-side={String(props.renderSideBySide)}
       data-jump-line={props.jumpTarget?.range.startLine}
+      data-flow-origin={props.flowOrigin?.origin.file}
+      data-next-hop-line={props.nextHop?.target.range.startLine}
     >
       {props.file?.path ?? "(ファイル未選択)"}
       {/* 注釈カードのファイルリンクの代わり。同じ経路で開けることを見る。 */}
@@ -39,6 +44,10 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
         onClick={() => props.onOpenFileReference({ file: "assets/logo.png" })}
       >
         注釈からロゴを開く
+      </button>
+      {/* 次ホップの式をクリックする代わり。 */}
+      <button type="button" onClick={() => props.onAdvanceHop()}>
+        次ホップへ踏み込む
       </button>
     </div>
   ),
@@ -239,8 +248,6 @@ describe("説明文のファイル参照", () => {
     fakeAgentGateway.review.mockResolvedValue(tourWithReferences);
     renderApp();
     await screen.findByText("デモリポジトリのレビュー");
-    // 初期ステップのファイルが開き終わるのを待つ（開く途中で click すると、
-    // 後から完了した初期ステップの読み込みが表示を上書きする）。
     await waitFor(() =>
       expect(screen.getByTestId("code-viewer").textContent).toContain(
         "src/lib.rs",
@@ -253,5 +260,78 @@ describe("説明文のファイル参照", () => {
         "assets/logo.png",
       ),
     );
+  });
+});
+
+describe("処理の流れを追う（from）", () => {
+  // fixture の step-2 は src/lib.rs:1 の `answer` から踏み込む from を持つ。
+  const stepWithOrigin = fixtures.reviewResult.tour.steps[1];
+
+  it("次ステップの from が今のファイルにあれば印が出て、進むと呼び出し元が上段に出る", async () => {
+    fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() => expect(viewer.textContent).toContain("src/lib.rs"));
+
+    // 1 ステップ目: 次ホップの印（2 ステップ目の from の行）だけが出る。
+    await waitFor(() =>
+      expect(viewer.getAttribute("data-next-hop-line")).toBe(
+        String(stepWithOrigin.from?.range.startLine),
+      ),
+    );
+    expect(viewer.getAttribute("data-flow-origin")).toBeNull();
+
+    // 式をクリック（スタブのボタン）すると 2 ステップ目へ進み、from のファイルが上段に出る。
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "次ホップへ踏み込む" }));
+    });
+    expect(screen.getByTestId("current-explanation").textContent).toContain(
+      "main から呼ばれます",
+    );
+    await waitFor(() =>
+      expect(viewer.getAttribute("data-flow-origin")).toBe(
+        stepWithOrigin.from?.file,
+      ),
+    );
+    // バッジは from の種類で出る。
+    expect(screen.getByText("踏み込む")).toBeTruthy();
+    // 最後のステップなので次ホップは無い。
+    expect(viewer.getAttribute("data-next-hop-line")).toBeNull();
+  });
+
+  it("探索中（手動でファイルを開いた後）は上段も印も消える", async () => {
+    fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() =>
+      expect(viewer.getAttribute("data-next-hop-line")).toBe("1"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "注釈からロゴを開く" }));
+    await waitFor(() => expect(viewer.textContent).toContain("assets/logo.png"));
+    expect(viewer.getAttribute("data-next-hop-line")).toBeNull();
+    expect(viewer.getAttribute("data-flow-origin")).toBeNull();
+  });
+
+  it("from の無いツアーでは上段も印も出ない", async () => {
+    const plainTour: AgentReviewResult = {
+      ...fixtures.reviewResult,
+      tour: {
+        ...fixtures.reviewResult.tour,
+        steps: fixtures.reviewResult.tour.steps.map((step) => ({
+          ...step,
+          from: null,
+        })),
+      },
+    };
+    fakeAgentGateway.review.mockResolvedValue(plainTour);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() => expect(viewer.textContent).toContain("src/lib.rs"));
+    expect(viewer.getAttribute("data-next-hop-line")).toBeNull();
+    expect(viewer.getAttribute("data-flow-origin")).toBeNull();
   });
 });

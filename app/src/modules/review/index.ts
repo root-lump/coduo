@@ -6,6 +6,7 @@ export type {
   CodeAnnotation,
   CodeRange,
   CodeTarget,
+  HopKind,
   JumpRelation,
   ResolvedReviewStep,
   ReviewErrorCode,
@@ -13,11 +14,13 @@ export type {
   ReviewRequest,
   ReviewStep,
   ReviewTour,
+  StepOrigin,
 } from "./domain";
 export type { ReviewGateway } from "./ports";
 export { useAgentReview } from "./application/useAgentReview";
 export { useReviewController } from "./application/useReviewController";
 export { normalizeAgentReviewError } from "./application/normalizeError";
+export { hopLabel } from "./application/relation";
 export {
   ExplanationPanel,
   type ExplanationPanelProps,

@@ -198,6 +198,189 @@
   position: absolute;
   inset: 0;
 }
+
+/* ---- Tour の from（処理の流れを追う）: 分割表示 ---- */
+
+/* 種類ごとの色。右パネルのバッジ（review.css）と同じ変数を使う。 */
+.flow-kind-callee {
+  --hop-color: var(--hop-callee);
+}
+.flow-kind-data_flow {
+  --hop-color: var(--hop-data-flow);
+}
+.flow-kind-return {
+  --hop-color: var(--hop-return);
+}
+
+/* 上段（呼び出し元）と下段（対象）を 45:55 で縦に並べる。比率の調整は持たない。 */
+.code-viewer-split {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-rows: auto minmax(0, 45fr) auto minmax(0, 55fr);
+  width: 100%;
+  height: 100%;
+}
+
+.flow-pane {
+  position: relative;
+  min-height: 0;
+}
+
+.flow-pane-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-raised);
+  font-family: "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.flow-pane-bar--target {
+  border-top: 1px solid var(--border);
+}
+
+.flow-pane-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-pane-role {
+  margin-left: auto;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--hop-color);
+}
+
+.flow-pane-bar--target .flow-pane-role {
+  color: var(--accent-bright);
+}
+
+/* 上段の式と、その行。 */
+.monaco-editor .flow-origin-range {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--hop-color) 18%, transparent);
+  outline: 1px solid var(--hop-color);
+  color: var(--hop-color);
+}
+
+.monaco-editor .flow-origin-line {
+  background: color-mix(in srgb, var(--hop-color) 6%, transparent) !important;
+}
+
+/* 下段で次のステップへ進む式。非ホバー時は淡い光が枠を周回し、ホバーで止まる。 */
+@property --ring-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.monaco-editor .flow-next-hop {
+  position: relative;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--hop-color) 16%, transparent);
+  color: var(--hop-color);
+  cursor: pointer;
+}
+
+.monaco-editor .flow-next-hop::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  padding: 2px;
+  border-radius: 5px;
+  background: conic-gradient(
+    from var(--ring-angle),
+    color-mix(in srgb, var(--hop-color) 55%, transparent) 0deg,
+    var(--hop-color) 70deg,
+    color-mix(in srgb, var(--hop-color) 65%, #fff) 95deg,
+    var(--hop-color) 120deg,
+    color-mix(in srgb, var(--hop-color) 55%, transparent) 200deg,
+    color-mix(in srgb, var(--hop-color) 55%, transparent) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--hop-color) 50%, transparent));
+  animation: flow-ring-spin 1.8s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes flow-ring-spin {
+  to {
+    --ring-angle: 360deg;
+  }
+}
+
+.monaco-editor .flow-next-hop:hover::before {
+  animation: none;
+  background: var(--hop-color);
+  filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .monaco-editor .flow-next-hop::before {
+    animation: none;
+  }
+}
+
+/* 式にホバーしたとき、式の直下に左端を揃えて出すタグ（Monaco の content widget）。 */
+.flow-hop-tag {
+  appearance: none;
+  margin: 3px 0 0 -2px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--hop-color);
+  color: #0b0d12;
+  font-family: var(--sans, Inter, ui-sans-serif, sans-serif);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px #00000073;
+  cursor: pointer;
+}
+
+.flow-hop-tag:hover {
+  filter: brightness(1.08);
+}
+
+.flow-hop-tag:focus-visible {
+  outline: 2px solid var(--text-bright);
+  outline-offset: 1px;
+}
+
+/* 上段の式から下段の対象範囲へ引く線。 */
+.flow-connector {
+  position: absolute;
+  inset: 0;
+  z-index: 29;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.flow-connector path {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  opacity: 0.9;
+}
 /* 注釈レールの幅は CodeViewer が --annotation-rail-width として渡す
    （既定 358px。useAnnotationRailSizing が制約と保存を持つ）。
    レール本体とカードの幅はこの値から導き、コネクタ線の終点（幅 + 23px）と揃える。 */

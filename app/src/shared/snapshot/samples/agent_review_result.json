@@ -16,6 +16,7 @@
           }
         },
         "relation": null,
+        "from": null,
         "annotations": [
           {
             "id": "step-1-annotation-1",
@@ -45,6 +46,17 @@
           }
         },
         "relation": "definition",
+        "from": {
+          "kind": "callee",
+          "file": "src/lib.rs",
+          "range": {
+            "startLine": 1,
+            "startColumn": 8,
+            "endLine": 1,
+            "endColumn": 14
+          },
+          "symbol": "answer"
+        },
         "annotations": []
       },
       {
@@ -53,6 +65,7 @@
         "explanation": "読み進める順序のまとめです。",
         "target": null,
         "relation": null,
+        "from": null,
         "annotations": []
       }
     ]

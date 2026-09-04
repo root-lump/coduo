@@ -17,9 +17,16 @@ import {
   focusRange,
   gitDecorations,
 } from "../decorations";
+import {
+  isInsideHop,
+  nextHopDecoration,
+  type NextHop,
+} from "../flowDecorations";
 import { monaco } from "../monacoEnvironment";
 import type { FileContent } from "../../workspace";
+import { createHopTagWidget } from "./hopTagWidget";
 import { installCodeNavigation } from "./monacoCodeNavigation";
+import { revealRangeInCenterSettled } from "./revealRange";
 
 type Disposable = { dispose(): void };
 
@@ -52,6 +59,9 @@ type UseMonacoViewerArgs = {
   onOpenLocation(target: CodeTarget): void;
   jumpTarget?: CodeTarget;
   jumpToken: number;
+  /** 次のステップの from が今のファイル内にあるとき、その式。クリックで進む印になる。 */
+  nextHop?: NextHop;
+  onAdvanceHop?(): void;
 };
 
 type AttachOptions = {
@@ -79,12 +89,20 @@ export function useMonacoViewer({
   onOpenLocation,
   jumpTarget,
   jumpToken,
+  nextHop,
+  onAdvanceHop,
 }: UseMonacoViewerArgs) {
   const editorRef = useRef<editor.ICodeEditor | undefined>(undefined);
   const surfaceRef = useRef<HTMLElement | null>(null);
   const paintChangedLinesRef = useRef(true);
   const editorListenersRef = useRef<Disposable | undefined>(undefined);
   const mouseListenerRef = useRef<Disposable | undefined>(undefined);
+  const hopWidgetRef = useRef<
+    ReturnType<typeof createHopTagWidget> | undefined
+  >(undefined);
+  const flowDecorationsRef = useRef<
+    editor.IEditorDecorationsCollection | undefined
+  >(undefined);
   const gitDecorationsRef = useRef<
     editor.IEditorDecorationsCollection | undefined
   >(undefined);
@@ -103,11 +121,21 @@ export function useMonacoViewer({
   // エディタ実体が入れ替わった（コード ⇄ 差分の切り替え）合図。
   // 新しいエディタにも装飾とフォーカス位置を付け直すため、効果の依存に加える。
   const [mountToken, setMountToken] = useState(0);
+  // 分割表示の連結線が下段の座標を引くために、エディタ実体を state でも公開する。
+  const [editorInstance, setEditorInstance] = useState<
+    editor.ICodeEditor | undefined
+  >(undefined);
 
   const annotationsRef = useRef(annotations);
   annotationsRef.current = annotations;
   const onOpenLocationRef = useRef(onOpenLocation);
   onOpenLocationRef.current = onOpenLocation;
+  // 次ホップは今のファイルにあるものだけ有効にする。
+  const activeHop = nextHop && nextHop.target.file === filePath ? nextHop : undefined;
+  const activeHopRef = useRef(activeHop);
+  activeHopRef.current = activeHop;
+  const onAdvanceHopRef = useRef(onAdvanceHop);
+  onAdvanceHopRef.current = onAdvanceHop;
 
   const updateAnnotationPositions = useCallback(() => {
     const editorInstance = editorRef.current;
@@ -171,8 +199,12 @@ export function useMonacoViewer({
     annotationDecorationsRef.current?.set(
       annotationDecorations(annotations, selectedAnnotationId, lineCount),
     );
+    flowDecorationsRef.current?.set(
+      activeHop ? nextHopDecoration(activeHop, lineCount) : [],
+    );
     schedulePositionUpdate();
   }, [
+    activeHop,
     annotations,
     changedLines,
     focus,
@@ -224,9 +256,16 @@ export function useMonacoViewer({
         extraListeners.forEach((listener) => listener.dispose());
       },
     };
-    mouseListenerRef.current = editorInstance.onMouseDown((event) => {
+    const mouseDown = editorInstance.onMouseDown((event) => {
       const position = event.target.position;
       if (!position) return;
+      // 次ホップの式は注釈より優先する（同じ行に注釈が重なることがある）。
+      if (
+        isInsideHop(activeHopRef.current, position.lineNumber, position.column)
+      ) {
+        onAdvanceHopRef.current?.();
+        return;
+      }
       const annotation = annotationAtPosition(
         annotationsRef.current,
         position.lineNumber,
@@ -234,12 +273,36 @@ export function useMonacoViewer({
       );
       if (annotation) selectAnnotation(annotation.id, false);
     });
+    // 次ホップの式にマウスが乗っている間だけタグを出す。タグ自体の上にあるときも保つ。
+    const mouseMove = editorInstance.onMouseMove((event) => {
+      const widget = hopWidgetRef.current;
+      if (!widget) return;
+      const position = event.target.position;
+      const inside =
+        position !== null &&
+        isInsideHop(activeHopRef.current, position.lineNumber, position.column);
+      if (inside) widget.show();
+      else if (!widget.isHovered()) widget.hide();
+    });
+    const mouseLeave = editorInstance.onMouseLeave(() => {
+      const widget = hopWidgetRef.current;
+      if (widget && !widget.isHovered()) widget.hide();
+    });
+    mouseListenerRef.current = {
+      dispose: () => {
+        mouseDown.dispose();
+        mouseMove.dispose();
+        mouseLeave.dispose();
+      },
+    };
     gitDecorationsRef.current = editorInstance.createDecorationsCollection();
     focusDecorationsRef.current = editorInstance.createDecorationsCollection();
     annotationDecorationsRef.current =
       editorInstance.createDecorationsCollection();
+    flowDecorationsRef.current = editorInstance.createDecorationsCollection();
     applyDecorations();
     setIsEditorMounted(true);
+    setEditorInstance(editorInstance);
     setMountToken((current) => current + 1);
   };
 
@@ -298,6 +361,22 @@ export function useMonacoViewer({
     }
   }, [filePath, jumpTarget, jumpToken]);
 
+  // 次ホップが変わるたびにタグ widget を作り直す（表示はマウス位置で切り替える）。
+  useEffect(() => {
+    hopWidgetRef.current?.dispose();
+    hopWidgetRef.current = undefined;
+    const target = editorRef.current;
+    if (!target || !activeHop) return;
+    const widget = createHopTagWidget(target, activeHop, () =>
+      onAdvanceHopRef.current?.(),
+    );
+    hopWidgetRef.current = widget;
+    return () => {
+      widget.dispose();
+      if (hopWidgetRef.current === widget) hopWidgetRef.current = undefined;
+    };
+  }, [activeHop, mountToken]);
+
   useEffect(() => {
     setSelectedAnnotationId(annotations[0]?.id);
   }, [focusToken, annotations]);
@@ -308,13 +387,14 @@ export function useMonacoViewer({
     const editorInstance = editorRef.current;
     const model = editorInstance?.getModel();
     const range = model ? focusRange(focus, model.getLineCount()) : undefined;
-    if (editorInstance && range) {
-      editorInstance.setSelection(range);
-      editorInstance.revealRangeInCenter(
-        range,
-        monaco.editor.ScrollType.Smooth,
-      );
-    }
+    if (!editorInstance || !range) return;
+    editorInstance.setSelection(range);
+    const reveal = revealRangeInCenterSettled(
+      editorInstance,
+      range,
+      monaco.editor.ScrollType.Smooth,
+    );
+    return () => reveal.dispose();
   }, [filePath, focus, focusToken, mountToken]);
   useEffect(
     () => () => {
@@ -325,12 +405,15 @@ export function useMonacoViewer({
       gitDecorationsRef.current?.clear();
       focusDecorationsRef.current?.clear();
       annotationDecorationsRef.current?.clear();
+      flowDecorationsRef.current?.clear();
+      hopWidgetRef.current?.dispose();
     },
     [],
   );
 
   return {
     anchors,
+    editorInstance,
     handleDiffMount,
     handleMount,
     selectAnnotation,
