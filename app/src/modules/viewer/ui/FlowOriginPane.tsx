@@ -54,6 +54,10 @@ export function FlowOriginPane({ file, origin, onEditor }: FlowOriginPaneProps) 
   // 同じファイルのまま from だけが変わったとき（同一ファイル内の踏み込み）に装飾を付け直す。
   useEffect(() => {
     if (editorRef.current) reveal(editorRef.current);
+    // 装飾 ID はモデルごとに固有で、モデルが差し替わると collection からは二度と消せない
+    // （keepCurrentModel で生き残る旧モデルに残り、同じファイルへ戻ると前回の式も光る）。
+    // モデル差し替え（子の path 反映）より先に走るこの cleanup で必ず消しておく。
+    return () => decorationsRef.current?.clear();
     // reveal は origin だけに依存する。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [origin]);

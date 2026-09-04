@@ -382,6 +382,10 @@ export function useMonacoViewer({
   }, [focusToken, annotations]);
   useEffect(() => {
     applyDecorations();
+    // 次ホップの装飾 ID はモデルごとに固有で、ファイルが替わる（モデルが差し替わる）と
+    // collection からは消せなくなり、同じファイルへ戻ったときに前回の枠が残る。
+    // モデル差し替えより先に走る cleanup で消しておく。
+    return () => flowDecorationsRef.current?.clear();
   }, [applyDecorations, filePath, focusToken, mountToken]);
   useEffect(() => {
     const editorInstance = editorRef.current;
