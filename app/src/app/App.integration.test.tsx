@@ -29,8 +29,14 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
     onOpenFileReference(reference: { file: string }): void;
     jumps: { id: string }[];
     annotations: { id: string }[];
-    jumpView?: { path: unknown[] };
+    jumpView?: {
+      path: { id: string }[];
+      originAnnotations: { id: string }[];
+      originJumps: { id: string }[];
+      originChangedLines: unknown[];
+    };
     onOpenJump(jump: { id: string }): void;
+    onOpenOriginJump(jump: { id: string }): void;
     onJumpBack(depth: number): void;
   }) => (
     <div
@@ -41,6 +47,14 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
       data-viewer-file={props.file?.path}
       data-jump-count={props.jumps.length}
       data-jump-depth={props.jumpView?.path.length ?? 0}
+      data-jump-id={props.jumpView?.path.at(-1)?.id}
+      data-origin-annotation-ids={props.jumpView?.originAnnotations
+        .map((annotation) => annotation.id)
+        .join(",")}
+      data-origin-jump-ids={props.jumpView?.originJumps
+        .map((jump) => jump.id)
+        .join(",")}
+      data-origin-changed-lines={props.jumpView?.originChangedLines.length}
       data-annotation-count={props.annotations.length}
       data-annotation-ids={props.annotations.map((annotation) => annotation.id).join(",")}
       data-changed-lines={props.changedLines.length}
@@ -60,6 +74,16 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
         onClick={() => props.jumps[0] && props.onOpenJump(props.jumps[0])}
       >
         最初のジャンプを開く
+      </button>
+      {/* 上段（親の範囲）のジャンプの式をクリックする代わり。 */}
+      <button
+        type="button"
+        onClick={() => {
+          const last = props.jumpView?.originJumps.at(-1);
+          if (last) props.onOpenOriginJump(last);
+        }}
+      >
+        上段の最後のジャンプを開く
       </button>
       <button type="button" onClick={() => props.onJumpBack(0)}>
         ジャンプを閉じる
@@ -419,6 +443,8 @@ describe("ジャンプ（識別子から定義へ）", () => {
     expect(viewer.getAttribute("data-viewer-file")).toBe("src/main.rs");
     expect(viewer.getAttribute("data-changed-lines")).toBe("0");
     expect(viewer.getAttribute("data-has-base-text")).toBe("false");
+    // 上段はステップの対象ファイル（表示中ファイル）なので、変更行はそちらに渡る。
+    expect(viewer.getAttribute("data-origin-changed-lines")).toBe("3");
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "ジャンプを閉じる" }));
@@ -426,6 +452,109 @@ describe("ジャンプ（識別子から定義へ）", () => {
     expect(viewer.getAttribute("data-viewer-file")).toBe("src/lib.rs");
     expect(viewer.getAttribute("data-changed-lines")).toBe("3");
     expect(viewer.getAttribute("data-has-base-text")).toBe("true");
+  });
+
+  it("ジャンプを開いている間、上段にはステップの注釈とジャンプが残る", async () => {
+    fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("1"));
+    expect(viewer.getAttribute("data-origin-annotation-ids")).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("1");
+    // 下段は飛び先の注釈、上段はステップの注釈とジャンプ。
+    expect(viewer.getAttribute("data-annotation-ids")).toBe(
+      "step-1-jump-1-annotation-1",
+    );
+    expect(viewer.getAttribute("data-origin-annotation-ids")).toBe(
+      "step-1-annotation-1",
+    );
+    expect(viewer.getAttribute("data-origin-jump-ids")).toBe("step-1-jump-1");
+  });
+
+  it("上段のジャンプを開くと、その深さで置き換わる", async () => {
+    // step-1 に 2 つのジャンプを持たせ、1 つ目にはさらに入れ子のジャンプを 2 つ持たせる。
+    const jump = (id: string, jumps?: AgentReviewResult["tour"]["steps"][0]["jumps"]) => ({
+      id,
+      kind: "callee" as const,
+      symbol: "answer",
+      from: { startLine: 1, startColumn: 8, endLine: 1, endColumn: 14 },
+      to: { file: "src/lib.rs", range: { startLine: 1, endLine: 3 } },
+      explanation: `${id} の定義。`,
+      jumps,
+    });
+    const [firstStep, ...restSteps] = fixtures.reviewResult.tour.steps;
+    const nestedTour: AgentReviewResult = {
+      ...fixtures.reviewResult,
+      tour: {
+        ...fixtures.reviewResult.tour,
+        steps: [
+          {
+            ...firstStep,
+            jumps: [
+              jump("step-1-jump-1", [
+                jump("step-1-jump-1-jump-1"),
+                jump("step-1-jump-1-jump-2"),
+              ]),
+              jump("step-1-jump-2"),
+            ],
+          },
+          ...restSteps,
+        ],
+      },
+    };
+    fakeAgentGateway.review.mockResolvedValue(nestedTour);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("2"));
+
+    // 深さ 1: 1 つ目を開く。上段にはステップの 2 つのジャンプが出る。
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("1");
+    expect(viewer.getAttribute("data-jump-id")).toBe("step-1-jump-1");
+    expect(viewer.getAttribute("data-origin-jump-ids")).toBe(
+      "step-1-jump-1,step-1-jump-2",
+    );
+
+    // 上段で 2 つ目を選ぶと、深さは 1 のまま末尾が置き換わる。
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "上段の最後のジャンプを開く" }),
+      );
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("1");
+    expect(viewer.getAttribute("data-jump-id")).toBe("step-1-jump-2");
+
+    // 深さ 2: 1 つ目に戻ってから入れ子を開く。上段は 1 つ目の飛び先（入れ子の 2 つ）。
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "ジャンプを閉じる" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("2");
+    expect(viewer.getAttribute("data-jump-id")).toBe("step-1-jump-1-jump-1");
+    expect(viewer.getAttribute("data-origin-jump-ids")).toBe(
+      "step-1-jump-1-jump-1,step-1-jump-1-jump-2",
+    );
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "上段の最後のジャンプを開く" }),
+      );
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("2");
+    expect(viewer.getAttribute("data-jump-id")).toBe("step-1-jump-1-jump-2");
   });
 
   it("ジャンプの無いツアーでは印が出ない", async () => {

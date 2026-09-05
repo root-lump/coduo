@@ -211,6 +211,7 @@ function App({ services, source, initialMode }: AppProps) {
                 jumps={derived.viewerJumps}
                 onOpenJump={actions.openJump}
                 jumpView={derived.jumpView}
+                onOpenOriginJump={actions.openOriginJump}
                 onJumpBack={actions.jumpBack}
               />
             </Suspense>

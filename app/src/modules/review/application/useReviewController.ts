@@ -59,6 +59,15 @@ export function useReviewController(tour: ReviewTour) {
     (jump: CodeJump) => setJumpPath((path) => [...path, jump]),
     [],
   );
+  /**
+   * 深さ depth の範囲からジャンプを開く。depth より深い列を捨ててから積むので、
+   * 上段（親の範囲）で別のジャンプを選ぶと、今見ている定義がそれに置き換わる。
+   */
+  const openJumpAt = useCallback(
+    (depth: number, jump: CodeJump) =>
+      setJumpPath((path) => [...path.slice(0, Math.max(0, depth)), jump]),
+    [],
+  );
   /** 深さ depth まで戻る。0 で全部閉じる。 */
   const backToDepth = useCallback(
     (depth: number) => setJumpPath((path) => path.slice(0, Math.max(0, depth))),
@@ -94,6 +103,7 @@ export function useReviewController(tour: ReviewTour) {
     jumpPath,
     markExploring,
     openJump,
+    openJumpAt,
     resolvedStep,
     resumeReview,
   };
