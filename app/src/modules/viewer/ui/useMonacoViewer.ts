@@ -71,10 +71,12 @@ type AttachOptions = {
   /** 注釈・装飾・reveal の対象。 */
   editorInstance: editor.ICodeEditor;
   /**
-   * 注釈レイヤの幅の基準。差分の並べて表示では modified 側の layout 幅が
-   * 右半分しか返さないため、差分エディタ全体の DOM を渡す。
+   * 注釈レイヤの幅の基準を返す。差分の並べて表示では modified 側の layout 幅が
+   * 右半分しか返さないため、差分エディタ全体の DOM を返す。
+   * Monaco はモデル差し替え（別ファイルへの切り替え）のたびに view と `.monaco-editor`
+   * 要素を作り直すので、要素そのものではなく取得関数を持ち、測るたびに引き直す。
    */
-  surface: HTMLElement | null;
+  surface(): HTMLElement | null;
   /** エディタ標準の scroll / layout / model 以外で位置の再計算が要るイベント。 */
   extraListeners: Disposable[];
   /** 変更行ガター装飾を出すか。差分モードでは Monaco の差分色と重なるので出さない。 */
@@ -97,7 +99,7 @@ export function useMonacoViewer({
   onOpenJump,
 }: UseMonacoViewerArgs) {
   const editorRef = useRef<editor.ICodeEditor | undefined>(undefined);
-  const surfaceRef = useRef<HTMLElement | null>(null);
+  const surfaceRef = useRef<() => HTMLElement | null>(() => null);
   const paintChangedLinesRef = useRef(true);
   const editorListenersRef = useRef<Disposable | undefined>(undefined);
   const mouseListenerRef = useRef<Disposable | undefined>(undefined);
@@ -146,7 +148,7 @@ export function useMonacoViewer({
       return;
     }
     const layout = editorInstance.getLayoutInfo();
-    const width = surfaceRef.current?.clientWidth ?? layout.width;
+    const width = surfaceRef.current()?.clientWidth ?? layout.width;
     const firstVisibleLine =
       editorInstance.getVisibleRanges()[0]?.startLineNumber ?? 1;
     const nextAnchors = annotations.map((annotation) => {
@@ -330,7 +332,7 @@ export function useMonacoViewer({
   const handleMount: OnMount = (editorInstance) => {
     attachEditor({
       editorInstance,
-      surface: editorInstance.getDomNode(),
+      surface: () => editorInstance.getDomNode(),
       extraListeners: [],
       paintChangedLines: true,
     });
@@ -340,7 +342,7 @@ export function useMonacoViewer({
     const modified = diffEditor.getModifiedEditor();
     attachEditor({
       editorInstance: modified,
-      surface: diffEditor.getContainerDomNode(),
+      surface: () => diffEditor.getContainerDomNode(),
       // 差分計算の完了と未変更領域の折り畳み変化で行の位置が動く。
       extraListeners: [
         diffEditor.onDidUpdateDiff(schedulePositionUpdate),
