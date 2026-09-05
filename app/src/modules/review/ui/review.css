@@ -1000,6 +1000,11 @@
   gap: 8px;
 }
 
+/* グリッドの単一カラムでは stretch されるので、ピルを内容幅に留める。 */
+.jump-current .annotation-count-badge {
+  justify-self: start;
+}
+
 .jump-path {
   display: flex;
   flex-wrap: wrap;
