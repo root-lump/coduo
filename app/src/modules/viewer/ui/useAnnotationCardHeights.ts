@@ -30,7 +30,10 @@ export function useAnnotationCardHeights(cardsKey: string) {
       const measured: Record<string, number> = {};
       for (const card of cards) {
         const id = card.dataset.annotationId;
-        const height = card.getBoundingClientRect().height;
+        // 表示倍率は documentElement の CSS zoom で変えるため、
+        // getBoundingClientRect はスケール後の値を返す。カードの top は
+        // スケール前の座標に書くので、同じ座標系の offsetHeight で測る。
+        const height = card.offsetHeight;
         // レイアウトを持たない環境（jsdom）では 0 が返る。見積もりを使わせる。
         if (id && height > 0) measured[id] = height;
       }
