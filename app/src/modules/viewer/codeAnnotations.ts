@@ -110,3 +110,36 @@ export function annotationRailHeight(
   const lastHeight = last.id === selectedId ? selectedHeight : cardHeight;
   return Math.max(viewportHeight, last.cardTop + lastHeight + margin);
 }
+
+/**
+ * 注釈のアンカー（コード側の線の起点）。行が可視範囲に無いときは表示領域の上端か
+ * 下端に寄せ、visible を false にする（線は引かず、カードは画面外の見た目になる）。
+ * Monaco の getScrolledVisiblePosition は画面外の行にも非 null の位置を返すので、
+ * 可視かどうかは別に渡す visibleRanges で判定する。
+ */
+export function annotationAnchor(args: {
+  id: string;
+  lineNumber: number;
+  visibleRanges: readonly { startLineNumber: number; endLineNumber: number }[];
+  position: { top: number; height: number } | null;
+  viewportHeight: number;
+}): AnnotationAnchor {
+  const { id, lineNumber, visibleRanges, position, viewportHeight } = args;
+  const visible =
+    position !== null &&
+    visibleRanges.some(
+      (range) =>
+        lineNumber >= range.startLineNumber &&
+        lineNumber <= range.endLineNumber,
+    );
+  if (visible && position) {
+    const center = position.top + position.height / 2;
+    return { id, top: Math.min(Math.max(center, 0), viewportHeight), visible: true };
+  }
+  const firstVisibleLine = visibleRanges[0]?.startLineNumber ?? 1;
+  return {
+    id,
+    top: lineNumber < firstVisibleLine ? 4 : viewportHeight - 4,
+    visible: false,
+  };
+}

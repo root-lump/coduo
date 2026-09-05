@@ -10,7 +10,7 @@ import type { CodeAnnotation, CodeJump, CodeTarget } from "../../review";
 import type { ChangedLine } from "../../workspace";
 import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
 import type { AnnotationAnchor } from "../codeAnnotations";
-import { annotationAtPosition } from "../codeAnnotations";
+import { annotationAnchor, annotationAtPosition } from "../codeAnnotations";
 import {
   annotationDecorations,
   focusDecoration,
@@ -149,26 +149,22 @@ export function useMonacoViewer({
     }
     const layout = editorInstance.getLayoutInfo();
     const width = surfaceRef.current()?.clientWidth ?? layout.width;
-    const firstVisibleLine =
-      editorInstance.getVisibleRanges()[0]?.startLineNumber ?? 1;
+    const visibleRanges = editorInstance.getVisibleRanges();
     const nextAnchors = annotations.map((annotation) => {
       const range = focusRange(annotation.target, model.getLineCount());
       const lineNumber = range
         ? Math.floor((range.startLineNumber + range.endLineNumber) / 2)
         : 1;
-      const position = editorInstance.getScrolledVisiblePosition({
-        lineNumber,
-        column: 1,
-      });
-      return {
+      return annotationAnchor({
         id: annotation.id,
-        top: position
-          ? position.top + position.height / 2
-          : lineNumber < firstVisibleLine
-            ? 4
-            : layout.height - 4,
-        visible: Boolean(position),
-      };
+        lineNumber,
+        visibleRanges,
+        position: editorInstance.getScrolledVisiblePosition({
+          lineNumber,
+          column: 1,
+        }),
+        viewportHeight: layout.height,
+      });
     });
     setViewport((current) =>
       current.height === layout.height && current.width === width
