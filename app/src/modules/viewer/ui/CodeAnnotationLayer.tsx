@@ -43,13 +43,15 @@ export function CodeAnnotationLayer({
   );
   const collapsedIds = collapsedAnnotationIds(anchors, height, selectedId);
   const placements = layoutAnnotationCards(anchors, {
+    // 畳む対象は実測より定数を優先する。畳む・畳まないが切り替わった直後の 1 フレームは
+    // 前の姿の実測が残っており、それで積むとカードがずれたり重なったりする。
     heightOf: (id) =>
-      heights[id] ??
-      (collapsedIds.has(id)
+      collapsedIds.has(id)
         ? COLLAPSED_ANNOTATION_CARD_HEIGHT
-        : id === selectedId
-          ? EXPANDED_ANNOTATION_CARD_HEIGHT
-          : ANNOTATION_CARD_HEIGHT),
+        : (heights[id] ??
+          (id === selectedId
+            ? EXPANDED_ANNOTATION_CARD_HEIGHT
+            : ANNOTATION_CARD_HEIGHT)),
   });
   const placementById = new Map(
     placements.map((placement) => [placement.id, placement]),
