@@ -52,7 +52,11 @@ Coduo は、対象コードの固定 revision 全文を埋め込んだ単一 HTM
 2. **private ソースの告知** — 収集完了後・Tour 生成前のこのタイミングで必ず行う（fail closed の相談と混ざって漏れやすいため、ここに固定する）。summary の `isPrivate: true` のときは、埋め込みがコードの複製であることと Artifact の共有設定（既定 private）をユーザーへ明示してから先へ進む。ローカル収集では公開/非公開を確認できないため、`--repo` の `visibility` は `unknown`（`isPrivate: true` 扱い）になる。**unknown のときは public だと決めつけず、private として告知する**。
 
 3. **Tour 生成** — payload の `fileContents` を読み、対象の Tour を AgentReviewResult 形式の JSON として自分（Claude）が書く:
-   - 形式は `$SKILL/references/tour-example.json` を正本とする（`agent: "claude"`、steps 1〜15、`id` は `claude-<n>` / `claude-<n>-annotation-<m>`）。
+   - 形式は `$SKILL/references/tour-example.json` を正本とする（`agent: "claude"`、steps 1〜15、`id` は `claude-<n>` / `claude-<n>-annotation-<m>`）。最小の構造は次のとおりで、`steps` はトップレベルではなく `tour` の下に入る。ステップと注釈の `target` は `{ "file": "<パス>", "range": { "startLine": 1, "endLine": 3 } }`（列まで指すときは `startColumn` / `endColumn` を足す）。
+
+     ```json
+     { "agent": "claude", "tour": { "title": "...", "summary": "...", "steps": [] }, "warnings": [] }
+     ```
    - 実在するパス・実在する行範囲だけを指す。概観ステップ（`target: null`）には annotation を置かない。
    - **役割分担**（ステップ・注釈・ジャンプ）:
      - ステップの `explanation` には、その範囲が処理の流れの中で果たす役割（入口、前後との繋がり、結果）を書く。
