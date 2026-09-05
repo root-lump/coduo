@@ -41,6 +41,32 @@ description: Use when app/src の viewer の表示・操作に関わる変更を
 
 7. **後片付け**: 確認タブを `tabs_close_mcp` で閉じ、HTTP サーバのバックグラウンドタスクを TaskStop で止める。
 
+## claude-in-chrome が使えないとき
+
+「Browser tools are not available in this session」と通知されたら、Playwright のキャッシュにある headless Chromium を CDP で操作して手順 5〜6 を代替する。
+
+```
+~/Library/Caches/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-mac-arm64/chrome-headless-shell
+```
+
+**使ってよいのはこの実行ファイルだけで、利用者が日常的に使うブラウザ（`/Applications` 配下のアプリと、その同梱バイナリ）は起動しない。** 実ブラウザを操作するために利用者へ設定変更を依頼することもしない。この実行ファイルが無ければ、代わりを探さず「ブラウザ確認は未実施」と報告して先へ進む。確認できていないことを、確認したかのように書かない。
+
+操作は次の形で行う。
+
+- `--remote-debugging-port <番号>` を付けて起動し、`/json/list` の `type === "page"` の target の `webSocketDebuggerUrl` に Node の組み込み `WebSocket` で繋ぐ。ブラウザ側の端点（`/json/version` が返す URL）に繋ぐと `Page` と `Runtime` が効かない。
+- `--dump-dom` はページのスクリプトが走り切る前に出力されることがあるので、値の読み出しは `Runtime.evaluate` で行う。
+- ページ内のスクロールは `Input.dispatchMouseEvent` の `mouseWheel` を対象要素の座標へ送る。要素の座標と寸法は `Runtime.evaluate` で読む。
+- スクリーンショットは `Page.captureScreenshot`。
+- **確認が終わったら WebSocket と Chrome、HTTP 配信のプロセスをすべて終了させる。** 例外で抜けた経路でも取りこぼさないようにする。
+
+## 修正前後を比べるとき
+
+同じ payload を、修正前と修正後の template にそれぞれ埋め込んで比べる。`git stash` はセッション間で共有されるので使わない。
+
+1. 修正前の template を用意する。`git show origin/main:skills/create-code-tour/assets/template.html` で取り出すか、変更したソースを一時退避して `pnpm template` を実行し、生成物を退避してから元へ戻す。
+2. `embed-snapshot.mjs` に `--template` で template を指定し、同じ payload から 2 つの HTML を組み立てる。
+3. 同じ操作列を両方に流し、DOM から読んだ値を並べて比べる。目視だけで判断しない。
+
 ## 差分表示（変更前と比べる）に関わる変更のとき
 
 手順 1 の `--diff` は未コミット変更のあるファイルにだけ patch を載せるので、差分表示の題材は作業ツリーの変更ファイルになる。Tour のステップはその変更ファイルを対象にし、annotation は次の 2 種類を置く。
