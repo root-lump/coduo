@@ -95,6 +95,26 @@ export function annotationRailHeight(
 }
 
 /**
+ * エディタのスクロールに合わせてレールを寄せる位置。基準にするカード（選択中のもの、
+ * 無ければアンカーが可視な先頭のもの）が表示領域の上端に来る位置を返す。
+ * 可視なアンカーが 1 つも無ければ undefined を返し、呼び出し側は寄せない。
+ */
+export function annotationRailScrollTop(
+  placements: AnnotationCardPlacement[],
+  viewportHeight: number,
+  railHeight: number,
+  selectedId?: string,
+  margin = ANNOTATION_RAIL_MARGIN,
+): number | undefined {
+  const base =
+    placements.find((placement) => placement.id === selectedId) ??
+    placements.find((placement) => placement.visible);
+  if (!base) return undefined;
+  const maxScrollTop = Math.max(railHeight - viewportHeight, 0);
+  return Math.min(Math.max(base.cardTop - margin, 0), maxScrollTop);
+}
+
+/**
  * 注釈のアンカー（コード側の線の起点）。行が可視範囲に無いときは表示領域の上端か
  * 下端に寄せ、visible を false にする（線は引かず、カードは画面外の見た目になる）。
  * Monaco の getScrolledVisiblePosition は画面外の行にも非 null の位置を返すので、

@@ -1,10 +1,17 @@
-import { useState, type CSSProperties, type UIEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type UIEvent,
+} from "react";
 import type { CodeAnnotation } from "../../review";
 import { TourMarkdown } from "../../review";
 import type { FileReference } from "../../workspace";
 import type { AnnotationAnchor } from "../codeAnnotations";
 import {
   annotationRailHeight,
+  annotationRailScrollTop,
   layoutAnnotationCards,
   ANNOTATION_CARD_HEIGHT,
   ANNOTATION_RAIL_MARGIN,
@@ -52,6 +59,31 @@ export function CodeAnnotationLayer({
   const railHeight = annotationRailHeight(placements, height);
   const isScrollable = railHeight > height;
   const scrollTop = isScrollable ? railScrollTop : 0;
+  const railRef = useRef<HTMLDivElement | null>(null);
+  // エディタをスクロールするとアンカーが動くので、それを起点にレールを寄せる。
+  // 手でレールをスクロールしている間はアンカーが動かず、追従が働かない。
+  const anchorKey = anchors
+    .map((anchor) => `${anchor.id}:${anchor.top}:${anchor.visible}`)
+    .join("|");
+  // 実測が入ると配置が変わるが、アンカーは動かない。高さの合計を依存に足して寄せ直す。
+  const placedHeight = placements.reduce(
+    (total, placement) => total + placement.cardHeight,
+    0,
+  );
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const next = annotationRailScrollTop(
+      placements,
+      height,
+      railHeight,
+      selectedId,
+    );
+    if (next === undefined || Math.abs(rail.scrollTop - next) < 1) return;
+    // 代入で onScroll が飛び railScrollTop も揃う。依存に railScrollTop を含めない
+    // ので、その state 更新でこの効果が再び走って往復することはない。
+    rail.scrollTop = next;
+  }, [anchorKey, placedHeight]);
   const lineStart = Math.max(width - 113, 90);
   // カード左端はエディタ面の右端から 23px（レールの右余白 15px とカードの内側余白）。
   const lineEnd = width + 23;
@@ -94,6 +126,7 @@ export function CodeAnnotationLayer({
       </button>
       <div
         className={`code-annotation-rail${isScrollable ? " is-scrollable" : ""}`}
+        ref={railRef}
         onScroll={(event: UIEvent<HTMLDivElement>) => {
           if (isScrollable) setRailScrollTop(event.currentTarget.scrollTop);
         }}

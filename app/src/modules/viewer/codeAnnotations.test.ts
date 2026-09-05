@@ -3,6 +3,7 @@ import {
   annotationAnchor,
   annotationAtPosition,
   annotationRailHeight,
+  annotationRailScrollTop,
   containsCodePosition,
   layoutAnnotationCards,
 } from "./codeAnnotations";
@@ -144,6 +145,47 @@ describe("code annotations", () => {
 
     // アンカーどうしが 160px 離れていれば、137 + 13 の押し下げは効かない。
     expect(placements[1].cardTop).toBe(360 - 137 / 2);
+  });
+});
+
+describe("annotationRailScrollTop", () => {
+  const placements = layoutAnnotationCards(
+    [
+      { id: "a", top: 0, visible: false },
+      { id: "b", top: 120, visible: true },
+      { id: "c", top: 300, visible: true },
+    ],
+    { heightOf: () => 100, gap: 10, margin: 10 },
+  );
+  // 配置は a:10 / b:120 / c:250、レールの中身は 360px。
+
+  it("scrolls to the selected card", () => {
+    expect(annotationRailScrollTop(placements, 100, 360, "c", 10)).toBe(240);
+  });
+
+  it("falls back to the first card with a visible anchor", () => {
+    expect(annotationRailScrollTop(placements, 100, 360, undefined, 10)).toBe(
+      110,
+    );
+  });
+
+  it("returns undefined when no anchor is visible", () => {
+    const offscreen = layoutAnnotationCards(
+      [{ id: "a", top: 0, visible: false }],
+      { heightOf: () => 100, gap: 10, margin: 10 },
+    );
+    expect(
+      annotationRailScrollTop(offscreen, 100, 360, undefined, 10),
+    ).toBeUndefined();
+  });
+
+  it("does not scroll past the bottom of the rail", () => {
+    // 基準カードの上端は 250 だが、レールの下端を超えて寄せない。
+    expect(annotationRailScrollTop(placements, 200, 360, "c", 10)).toBe(160);
+  });
+
+  it("stays at the top when the rail needs no scrolling", () => {
+    expect(annotationRailScrollTop(placements, 400, 400, "c", 10)).toBe(0);
   });
 });
 
