@@ -5,9 +5,11 @@ import type { FileReference } from "../../workspace";
 import type { AnnotationAnchor } from "../codeAnnotations";
 import {
   annotationRailHeight,
+  collapsedAnnotationIds,
   layoutAnnotationCards,
   ANNOTATION_CARD_HEIGHT,
   ANNOTATION_RAIL_MARGIN,
+  COLLAPSED_ANNOTATION_CARD_HEIGHT,
   EXPANDED_ANNOTATION_CARD_HEIGHT,
 } from "../codeAnnotations";
 import { useAnnotationCardHeights } from "./useAnnotationCardHeights";
@@ -39,12 +41,17 @@ export function CodeAnnotationLayer({
   const { contentRef, heights } = useAnnotationCardHeights(
     annotations.map((annotation) => annotation.id).join("\n"),
   );
+  const collapsedIds = collapsedAnnotationIds(anchors, height, selectedId);
   const placements = layoutAnnotationCards(anchors, {
+    // 畳む対象は実測より定数を優先する。畳む・畳まないが切り替わった直後の 1 フレームは
+    // 前の姿の実測が残っており、それで積むとカードがずれたり重なったりする。
     heightOf: (id) =>
-      heights[id] ??
-      (id === selectedId
-        ? EXPANDED_ANNOTATION_CARD_HEIGHT
-        : ANNOTATION_CARD_HEIGHT),
+      collapsedIds.has(id)
+        ? COLLAPSED_ANNOTATION_CARD_HEIGHT
+        : (heights[id] ??
+          (id === selectedId
+            ? EXPANDED_ANNOTATION_CARD_HEIGHT
+            : ANNOTATION_CARD_HEIGHT)),
   });
   const placementById = new Map(
     placements.map((placement) => [placement.id, placement]),
@@ -107,6 +114,7 @@ export function CodeAnnotationLayer({
             const placement = placementById.get(annotation.id);
             const selected = annotation.id === selectedId;
             const offscreen = !placement?.visible;
+            const collapsed = collapsedIds.has(annotation.id);
             const style = {
               top: `${placement?.cardTop ?? ANNOTATION_RAIL_MARGIN}px`,
             } satisfies CSSProperties;
@@ -115,7 +123,7 @@ export function CodeAnnotationLayer({
             // カード本体の click は補助で、リンク側は stopPropagation で切り分ける。
             return (
               <div
-                className={`code-annotation-card annotation-color-${(index % 4) + 1}${selected ? " is-selected" : ""}${offscreen ? " is-offscreen" : ""}`}
+                className={`code-annotation-card annotation-color-${(index % 4) + 1}${selected ? " is-selected" : ""}${offscreen ? " is-offscreen" : ""}${collapsed ? " is-collapsed" : ""}`}
                 data-annotation-id={annotation.id}
                 data-testid="code-annotation-card"
                 key={annotation.id}

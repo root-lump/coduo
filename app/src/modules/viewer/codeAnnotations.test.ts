@@ -3,6 +3,7 @@ import {
   annotationAnchor,
   annotationAtPosition,
   annotationRailHeight,
+  collapsedAnnotationIds,
   containsCodePosition,
   layoutAnnotationCards,
 } from "./codeAnnotations";
@@ -206,5 +207,49 @@ describe("annotationAnchor", () => {
         viewportHeight: 500,
       }),
     ).toEqual({ id: "a", top: 496, visible: false });
+  });
+});
+
+describe("collapsedAnnotationIds", () => {
+  // 詰まった 3 枚の画面外カードと、可視の 1 枚。畳む枚数ごとの必要高さは
+  // 0 枚で 370px、1 枚で 310px、2 枚で 250px、3 枚で 190px になる。
+  const anchors = [
+    { id: "a", top: 20, visible: false },
+    { id: "b", top: 30, visible: false },
+    { id: "c", top: 40, visible: false },
+    { id: "d", top: 60, visible: true },
+  ];
+  const options = {
+    cardHeight: 80,
+    collapsedHeight: 20,
+    expandedHeight: 200,
+    gap: 10,
+    margin: 10,
+  };
+
+  it("収まるなら 1 枚も畳まない", () => {
+    expect([...collapsedAnnotationIds(anchors, 380, undefined, options)]).toEqual(
+      [],
+    );
+  });
+
+  it("収まらないときは画面外のカードを上から必要な枚数だけ畳む", () => {
+    expect([...collapsedAnnotationIds(anchors, 320, undefined, options)]).toEqual(
+      ["a"],
+    );
+    expect([...collapsedAnnotationIds(anchors, 260, undefined, options)]).toEqual(
+      ["a", "b"],
+    );
+  });
+
+  it("画面外のカードを全部畳んでも収まらないときはそこで止める", () => {
+    expect([...collapsedAnnotationIds(anchors, 100, undefined, options)]).toEqual(
+      ["a", "b", "c"],
+    );
+  });
+
+  it("アンカーが可視のカードは畳まない", () => {
+    const collapsed = collapsedAnnotationIds(anchors, 100, "d", options);
+    expect(collapsed.has("d")).toBe(false);
   });
 });

@@ -45,6 +45,8 @@ export const ANNOTATION_CARD_GAP = 13;
 export const ANNOTATION_RAIL_MARGIN = 18;
 /** 選択中のカードの初期見積もり。viewer.css の .is-selected の max-height と揃える。 */
 export const EXPANDED_ANNOTATION_CARD_HEIGHT = 330;
+/** 畳んだカードの見積もり。viewer.css の .is-collapsed の max-height と揃える。 */
+export const COLLAPSED_ANNOTATION_CARD_HEIGHT = 46;
 
 export type AnnotationLayoutOptions = {
   /** カードの実測高さ。実測が入るまでは見積もりを返す。 */
@@ -92,6 +94,57 @@ export function annotationRailHeight(
   const last = placements.at(-1);
   if (!last) return viewportHeight;
   return Math.max(viewportHeight, last.cardTop + last.cardHeight + margin);
+}
+
+export type CollapseOptions = {
+  cardHeight?: number;
+  collapsedHeight?: number;
+  expandedHeight?: number;
+  gap?: number;
+  margin?: number;
+};
+
+/**
+ * 畳むカードの id。全部を通常の高さで積んで表示域に収まるなら畳まず、収まらないときだけ
+ * アンカーが画面外のカードを上から順に、収まるまで畳む。
+ *
+ * 高さに実測ではなく見積もりの定数を使うのは、判断が振動しないようにするため。畳んだカードの
+ * 「畳まないときの高さ」は測れないので、実測で判断すると畳む・畳まないを往復しうる。
+ */
+export function collapsedAnnotationIds(
+  anchors: AnnotationAnchor[],
+  viewportHeight: number,
+  selectedId?: string,
+  {
+    cardHeight = ANNOTATION_CARD_HEIGHT,
+    collapsedHeight = COLLAPSED_ANNOTATION_CARD_HEIGHT,
+    expandedHeight = EXPANDED_ANNOTATION_CARD_HEIGHT,
+    gap = ANNOTATION_CARD_GAP,
+    margin = ANNOTATION_RAIL_MARGIN,
+  }: CollapseOptions = {},
+): ReadonlySet<string> {
+  const candidates = anchors
+    .filter((anchor) => !anchor.visible)
+    .map((anchor) => anchor.id);
+  const fits = (collapsed: ReadonlySet<string>) => {
+    const placements = layoutAnnotationCards(anchors, {
+      heightOf: (id) =>
+        collapsed.has(id)
+          ? collapsedHeight
+          : id === selectedId
+            ? expandedHeight
+            : cardHeight,
+      gap,
+      margin,
+    });
+    return annotationRailHeight(placements, viewportHeight, margin) <= viewportHeight;
+  };
+
+  for (let count = 0; count < candidates.length; count += 1) {
+    const collapsed = new Set(candidates.slice(0, count));
+    if (fits(collapsed)) return collapsed;
+  }
+  return new Set(candidates);
 }
 
 /**

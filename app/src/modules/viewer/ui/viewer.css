@@ -633,8 +633,35 @@ button.flow-path-chip:hover {
   scrollbar-color: #3b4152 transparent;
 }
 
+/* アンカーが画面外のカードは薄くする（畳むかどうかは is-collapsed が決める） */
 .code-annotation-card.is-offscreen {
   opacity: 0.58;
+}
+
+/*
+ * 収まらないときに畳むカードは番号と見出しだけにする。通常の高さのまま積むと、
+ * ペインが低いときに読んでいる行のカードが表示域の外へ押し出される。
+ * 高さは番号バッジ 28px（border-box）と上下の余白 8px ずつ、カードの枠 2px の和。
+ * codeAnnotations.ts の COLLAPSED_ANNOTATION_CARD_HEIGHT と揃える。
+ */
+.code-annotation-card.is-collapsed,
+.code-annotation-card.is-collapsed.is-selected {
+  min-height: 0;
+  max-height: 46px;
+  padding: 8px 10px 8px 12px;
+}
+
+.code-annotation-card.is-collapsed .code-annotation-body {
+  display: none;
+}
+
+.code-annotation-card.is-collapsed .code-annotation-select strong {
+  -webkit-line-clamp: 1;
+}
+
+/* 1 行に畳むと、上端揃えでは番号バッジ（30px）と見出し（約 17px）の中心がずれる */
+.code-annotation-card.is-collapsed .code-annotation-select {
+  align-items: center;
 }
 
 .code-annotation-number {
