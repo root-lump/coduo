@@ -6,11 +6,11 @@ import type { AnnotationAnchor } from "../codeAnnotations";
 import {
   annotationRailHeight,
   layoutAnnotationCards,
-  ANNOTATION_CARD_GAP,
   ANNOTATION_CARD_HEIGHT,
   ANNOTATION_RAIL_MARGIN,
   EXPANDED_ANNOTATION_CARD_HEIGHT,
 } from "../codeAnnotations";
+import { useAnnotationCardHeights } from "./useAnnotationCardHeights";
 
 type CodeAnnotationLayerProps = {
   anchors: AnnotationAnchor[];
@@ -36,25 +36,20 @@ export function CodeAnnotationLayer({
   width,
 }: CodeAnnotationLayerProps) {
   const [railScrollTop, setRailScrollTop] = useState(0);
-  const placements = layoutAnnotationCards(
-    anchors,
-    ANNOTATION_CARD_HEIGHT,
-    ANNOTATION_CARD_GAP,
-    ANNOTATION_RAIL_MARGIN,
-    selectedId,
-    EXPANDED_ANNOTATION_CARD_HEIGHT,
+  const { contentRef, heights } = useAnnotationCardHeights(
+    annotations.map((annotation) => annotation.id).join("\n"),
   );
+  const placements = layoutAnnotationCards(anchors, {
+    heightOf: (id) =>
+      heights[id] ??
+      (id === selectedId
+        ? EXPANDED_ANNOTATION_CARD_HEIGHT
+        : ANNOTATION_CARD_HEIGHT),
+  });
   const placementById = new Map(
     placements.map((placement) => [placement.id, placement]),
   );
-  const railHeight = annotationRailHeight(
-    placements,
-    height,
-    ANNOTATION_CARD_HEIGHT,
-    ANNOTATION_RAIL_MARGIN,
-    selectedId,
-    EXPANDED_ANNOTATION_CARD_HEIGHT,
-  );
+  const railHeight = annotationRailHeight(placements, height);
   const isScrollable = railHeight > height;
   const scrollTop = isScrollable ? railScrollTop : 0;
   const lineStart = Math.max(width - 113, 90);
@@ -77,7 +72,7 @@ export function CodeAnnotationLayer({
           const placement = placementById.get(annotation.id);
           if (!placement?.visible) return null;
           const cardCenter =
-            placement.cardTop + ANNOTATION_CARD_HEIGHT / 2 - scrollTop;
+            placement.cardTop + placement.cardHeight / 2 - scrollTop;
           if (cardCenter < 0 || cardCenter > height) return null;
           return (
             <path
@@ -105,6 +100,7 @@ export function CodeAnnotationLayer({
       >
         <div
           className="code-annotation-rail-content"
+          ref={contentRef}
           style={{ height: `${railHeight}px` }}
         >
           {annotations.map((annotation, index) => {
@@ -120,6 +116,7 @@ export function CodeAnnotationLayer({
             return (
               <div
                 className={`code-annotation-card annotation-color-${(index % 4) + 1}${selected ? " is-selected" : ""}${offscreen ? " is-offscreen" : ""}`}
+                data-annotation-id={annotation.id}
                 data-testid="code-annotation-card"
                 key={annotation.id}
                 onClick={() => onSelect(annotation.id)}

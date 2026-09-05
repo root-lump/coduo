@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // 注釈カードの描画テスト（見出し・Markdown 本文・選択とファイルリンクの切り分け）。
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CodeAnnotation } from "../../review";
 import { parseFileReference } from "../../workspace";
 import { CodeAnnotationLayer } from "./CodeAnnotationLayer";
@@ -45,6 +45,10 @@ function renderLayer() {
   return { onSelect, onOpenFileReference };
 }
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("CodeAnnotationLayer", () => {
   it("見出しと Markdown の本文を描画する", () => {
     renderLayer();
@@ -63,6 +67,30 @@ describe("CodeAnnotationLayer", () => {
     fireEvent.click(screen.getByRole("button", { name: /1\. 公開関数/ }));
     expect(onSelect).toHaveBeenLastCalledWith("a-1");
     expect(onSelect).toHaveBeenCalledTimes(2);
+  });
+
+  it("表示倍率が変わっても、カードは実際に占める高さの分だけ間を空ける", () => {
+    // 倍率は documentElement の CSS zoom で変えるため、getBoundingClientRect は
+    // スケール後の値を返す。それで積むとカードが重なる。
+    const measured: Record<string, number> = { "a-1": 137, "a-2": 137 };
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return measured[this.dataset.annotationId ?? ""] ?? 0;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        const height = (measured[this.dataset.annotationId ?? ""] ?? 0) * 0.8;
+        return { height, width: 0, top: 0, left: 0, right: 0, bottom: height, x: 0, y: 0, toJSON: () => ({}) };
+      },
+    );
+
+    renderLayer();
+
+    const cards = screen.getAllByTestId("code-annotation-card");
+    expect(cards[0].style.top).toBe("18px");
+    // 18 + 137 + 13。スケール後の 109.6 で積むと 140.6px になり、カードが重なる。
+    expect(cards[1].style.top).toBe("168px");
   });
 
   it("本文のファイルリンクは参照を通知し、カードの選択には伝播しない", () => {
