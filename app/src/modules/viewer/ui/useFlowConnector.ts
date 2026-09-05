@@ -6,6 +6,7 @@ import type { CodeRange, JumpKind } from "../../review";
 import type { SymbolLocation } from "../codeNavigation";
 import { jumpColor } from "../flowDecorations";
 import { lineIsVisible } from "./visibleLines";
+import { containerPoint, layoutScaleOf, type Point } from "./connectorGeometry";
 
 type FlowConnectorArgs = {
   container: HTMLElement | null;
@@ -24,10 +25,8 @@ export type FlowConnectorPath = {
   color: string;
 };
 
-type Point = { x: number; y: number };
-
 /**
- * エディタ内の位置をコンテナ座標に変換し、そのエディタの縦の範囲に収める。
+ * エディタ内の位置をコンテナ座標に変換する。
  * 行が可視範囲の外（仮想化で描画されていない）なら undefined。その行では
  * getScrolledVisiblePosition の横位置が取れず（-1 起点の値になる）、線の端が
  * 左端に張り付くため、線を引かない。
@@ -48,14 +47,13 @@ function pointIn(
     column,
   });
   if (!position) return undefined;
-  const editorRect = dom.getBoundingClientRect();
   const containerRect = container.getBoundingClientRect();
-  const x = editorRect.left - containerRect.left + position.left;
-  const rawY =
-    editorRect.top - containerRect.top + position.top + position.height / 2;
-  const minY = editorRect.top - containerRect.top;
-  const maxY = editorRect.bottom - containerRect.top;
-  return { x, y: Math.min(Math.max(rawY, minY), maxY) };
+  return containerPoint({
+    editorRect: dom.getBoundingClientRect(),
+    containerRect,
+    scale: layoutScaleOf(containerRect.width, container.offsetWidth),
+    position,
+  });
 }
 
 export function useFlowConnector({
