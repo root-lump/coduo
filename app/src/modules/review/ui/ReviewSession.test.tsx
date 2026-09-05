@@ -45,6 +45,10 @@ function renderSession(
       currentStepIndex={1}
       explanation={undefined}
       relation="definition"
+      jumps={[]}
+      jumpPath={[]}
+      onOpenJump={vi.fn()}
+      onJumpBack={vi.fn()}
       isExploring={false}
       mode="repository"
       warnings={[]}

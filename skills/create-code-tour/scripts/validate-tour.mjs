@@ -11,8 +11,10 @@ const MAX_SUMMARY = 800;
 // ステップ名と注釈の見出しはビューアで 2 行まで折り返して表示する。上限はその幅に合わせる。
 const MAX_STEP_TITLE = 60;
 const MAX_ANNOTATION_LABEL = 36;
-// from（どの式から来たか）の種類。ビューアの HopKind と同じ値。
-const HOP_KINDS = ["callee", "data_flow", "return"];
+// ジャンプ（識別子から定義へ）。種類はビューアの JumpKind と同じ値。
+const JUMP_KINDS = ["callee", "data_flow"];
+const MAX_JUMP_DEPTH = 3;
+const MAX_JUMPS_PER_SCOPE = 8;
 
 const [payloadPath, tourPath, tourKey] = process.argv.slice(2);
 if (!payloadPath || !tourPath || !tourKey) {
@@ -38,25 +40,22 @@ const snapshotPaths = new Set(
 const isPr = tourKey === "pull_request";
 const allowFileless = isPr || tourKey === "repository"; // 概観ステップ
 const lineCountOf = (path) => payload.fileContents[path]?.lineCount ?? 0;
+// CRLF の本文でも行末の \r を列に数えない。
 const lineTextOf = (path, line) =>
-  (payload.fileContents[path]?.content ?? "").split("\n")[line - 1];
+  (payload.fileContents[path]?.content ?? "").split("\n")[line - 1]?.replace(/\r$/, "");
 // symbolIndex の位置は 1 始まりの行と UTF-16 コード単位の列（symbol-index.mjs が生成）。
-// 索引は「宣言のある名前の出現」しか持たないので、名前が無いとき（ライブラリのメソッドや
-// 分割代入で作った名前）は照合しない。予算超過で出現を落とした（degraded）索引も同様。
+// ジャンプの飛び先は「symbol の宣言を含む範囲」に限る。宣言は degraded でも残る。
 const symbolIndex = payload.symbolIndex;
-const symbolIndexKnows = (name) =>
-  Boolean(symbolIndex) &&
-  !symbolIndex.degraded &&
-  symbolIndex.symbols.some((symbol) => symbol.name === name);
-const symbolOccursAt = (name, file, line, column) => {
+const declaredWithin = (name, file, range) => {
   const pathIndex = symbolIndex.paths.indexOf(file);
   const entry = symbolIndex.symbols.find((symbol) => symbol.name === name);
   if (pathIndex < 0 || !entry) return false;
-  const matches = (position) =>
-    position[0] === pathIndex && position[1] === line && position[2] === column;
-  return entry.occurrences.some(matches) || entry.declarations.some(matches);
+  return entry.declarations.some(
+    ([path, line]) => path === pathIndex && line >= range.startLine && line <= range.endLine,
+  );
 };
-let hopCount = 0;
+let jumpCount = 0;
+const jumpIds = new Set();
 
 // 説明文（Markdown）のインラインコードのうち、ファイルパスの形をしているのに
 // snapshot に無いものを拾う。グロブなど正当な用途もあるので警告に留める。
@@ -108,7 +107,7 @@ else {
       if ((step.annotations ?? []).length > 0) {
         push(`${at}: 概観ステップに annotation は置けません`);
       }
-      if (step.from != null) push(`${at}: 概観ステップに from は置けません`);
+      if ((step.jumps ?? []).length > 0) push(`${at}: 概観ステップに jumps は置けません`);
       continue;
     }
     const checkTarget = (t, label, parentRange) => {
@@ -134,64 +133,82 @@ else {
       }
     };
     checkTarget(target, at);
-    // from は直前ステップの範囲内にある 1 行の式を列まで正確に指す。ファイル・行・列・
-    // シンボル名の食い違いはエラー（fail closed）。直前ステップの範囲外だけは警告に留める
-    // （分割表示は成立し、クリックできる印が出ないだけのため）。
-    const checkOrigin = (from, label) => {
-      if (!HOP_KINDS.includes(from.kind)) {
-        push(`${label}: kind が不正です: ${from.kind}`);
-      }
-      const before = errors.length;
-      checkTarget(from, label);
-      if (errors.length > before) return;
-      const r = from.range;
-      if (r.startLine !== r.endLine) {
-        push(`${label}: from は 1 行の式を指してください (${r.startLine}-${r.endLine})`);
+    // ジャンプはコードジャンプ（識別子 → その定義）と同じもの。from は今いる範囲
+    // （ステップの対象、入れ子なら親の to）と同じファイルの 1 行の識別子を列まで正確に指し、
+    // to はその識別子の宣言を含む範囲でなければならない（fail closed）。
+    const checkJumps = (jumps, scope, label, depth) => {
+      if (!Array.isArray(jumps)) {
+        push(`${label}: jumps は配列にしてください`);
         return;
       }
-      const lineText = lineTextOf(from.file, r.startLine) ?? "";
-      const validColumn = (value) => Number.isInteger(value) && value >= 1;
-      if (
-        !validColumn(r.startColumn) ||
-        !validColumn(r.endColumn) ||
-        r.endColumn <= r.startColumn ||
-        r.endColumn > lineText.length + 1
-      ) {
-        push(
-          `${label}: 列が不正です (${r.startColumn}-${r.endColumn} / 行の長さ ${lineText.length})`,
-        );
+      if (jumps.length > MAX_JUMPS_PER_SCOPE) {
+        push(`${label}: jumps は 1 つの範囲に ${MAX_JUMPS_PER_SCOPE} 件までです (${jumps.length} 件)`);
+      }
+      if (depth > MAX_JUMP_DEPTH) {
+        push(`${label}: ジャンプの入れ子は深さ ${MAX_JUMP_DEPTH} までです`);
         return;
       }
-      if (from.symbol != null) {
-        const actual = lineText.slice(r.startColumn - 1, r.endColumn - 1);
-        if (actual !== from.symbol) {
-          push(`${label}: 範囲の本文 "${actual}" が symbol "${from.symbol}" と一致しません`);
-          return;
+      for (const [ji, jump] of jumps.entries()) {
+        const jlabel = `${label}[${ji}]`;
+        if (!jump.id || jumpIds.has(jump.id)) push(`${jlabel}: id が空か重複しています`);
+        jumpIds.add(jump.id);
+        if (!JUMP_KINDS.includes(jump.kind)) push(`${jlabel}: kind が不正です: ${jump.kind}`);
+        if (!jump.symbol) push(`${jlabel}: symbol が空です`);
+        if (!jump.explanation) push(`${jlabel}: explanation が空です`);
+        checkFileReferences(jump.explanation, `${jlabel}.explanation`);
+        const r = jump.from;
+        if (!r || r.startLine !== r.endLine) {
+          push(`${jlabel}: from は 1 行の識別子を指してください (${r?.startLine}-${r?.endLine})`);
+          continue;
         }
-        if (!symbolIndex) {
-          warnings.push(`${label}: symbolIndex が無いので symbol を索引と突き合わせられません`);
-        } else if (
-          symbolIndexKnows(from.symbol) &&
-          !symbolOccursAt(from.symbol, from.file, r.startLine, r.startColumn)
+        if (r.startLine < scope.range.startLine || r.startLine > scope.range.endLine) {
+          push(
+            `${jlabel}: from が今いる範囲の外です (${r.startLine} 行 / 範囲 ${scope.range.startLine}-${scope.range.endLine})`,
+          );
+          continue;
+        }
+        const lineText = lineTextOf(scope.file, r.startLine) ?? "";
+        const validColumn = (value) => Number.isInteger(value) && value >= 1;
+        if (
+          !validColumn(r.startColumn) ||
+          !validColumn(r.endColumn) ||
+          r.endColumn <= r.startColumn ||
+          r.endColumn > lineText.length + 1
         ) {
-          push(`${label}: symbol "${from.symbol}" が symbolIndex のその位置にありません`);
-          return;
+          push(
+            `${jlabel}: from の列が不正です (${r.startColumn}-${r.endColumn} / 行の長さ ${lineText.length})`,
+          );
+          continue;
+        }
+        const actual = lineText.slice(r.startColumn - 1, r.endColumn - 1);
+        if (jump.symbol && actual !== jump.symbol) {
+          push(`${jlabel}: from の本文 "${actual}" が symbol "${jump.symbol}" と一致しません`);
+          continue;
+        }
+        if (!jump.to) {
+          push(`${jlabel}: to がありません`);
+          continue;
+        }
+        const before = errors.length;
+        checkTarget(jump.to, `${jlabel}.to`);
+        if (errors.length > before) continue;
+        if (!symbolIndex) {
+          push(`${jlabel}: ジャンプの検証には symbolIndex が必要です`);
+          continue;
+        }
+        if (jump.symbol && !declaredWithin(jump.symbol, jump.to.file, jump.to.range)) {
+          push(
+            `${jlabel}: 飛び先 ${jump.to.file}:${jump.to.range.startLine}-${jump.to.range.endLine} に symbol "${jump.symbol}" の宣言がありません`,
+          );
+          continue;
+        }
+        jumpCount += 1;
+        if (jump.jumps != null) {
+          checkJumps(jump.jumps, jump.to, `${jlabel}.jumps`, depth + 1);
         }
       }
-      const previous = tour.steps[index - 1]?.target;
-      const insidePrevious =
-        previous &&
-        previous.file === from.file &&
-        r.startLine >= previous.range.startLine &&
-        r.startLine <= previous.range.endLine;
-      if (!insidePrevious) {
-        warnings.push(
-          `${label}: 直前ステップの範囲外にあるので、クリックできる印は出ません`,
-        );
-      }
-      hopCount += 1;
     };
-    if (step.from != null) checkOrigin(step.from, `${at}.from`);
+    if (step.jumps != null) checkJumps(step.jumps, target, `${at}.jumps`, 1);
     for (const [ai, annotation] of (step.annotations ?? []).entries()) {
       const alabel = `${at}.annotations[${ai}]`;
       if (!annotation.id) push(`${alabel}: id が空です`);
@@ -224,5 +241,5 @@ if (errors.length > 0) {
 console.error(
   `validate-tour: ${tourKey} OK (${tour.steps.length} steps, ` +
     `${tour.steps.reduce((n, s) => n + (s.annotations?.length ?? 0), 0)} annotations, ` +
-    `${hopCount} hops)`,
+    `${jumpCount} jumps)`,
 );

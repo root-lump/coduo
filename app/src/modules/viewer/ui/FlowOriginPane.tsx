@@ -1,9 +1,9 @@
-// 分割表示の上段。from（どの式から来たか）のファイルを読み取り専用で出し、式を装飾する。
+// 分割表示の上段。開いているジャンプの参照元のファイルを読み取り専用で出し、式を装飾する。
 // コードナビゲーションの登録は Monaco 全体への単一登録なので、ここでは行わない（下段が持つ）。
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { useEffect, useRef } from "react";
 import type { editor } from "monaco-editor";
-import type { StepOrigin } from "../../review";
+import type { CodeRange, JumpKind } from "../../review";
 import type { FileContent } from "../../workspace";
 import { originDecoration } from "../flowDecorations";
 import { focusRange } from "../decorations";
@@ -14,12 +14,19 @@ import { revealRangeInCenterSettled } from "./revealRange";
 
 type FlowOriginPaneProps = {
   file: FileContent;
-  origin: StepOrigin;
+  /** 参照元の式。file 内の 1 行。 */
+  from: CodeRange;
+  kind: JumpKind;
   /** 連結線が座標を引くためにエディタ実体を渡す。unmount 時は undefined。 */
   onEditor(editorInstance: editor.ICodeEditor | undefined): void;
 };
 
-export function FlowOriginPane({ file, origin, onEditor }: FlowOriginPaneProps) {
+export function FlowOriginPane({
+  file,
+  from,
+  kind,
+  onEditor,
+}: FlowOriginPaneProps) {
   const editorRef = useRef<editor.ICodeEditor | undefined>(undefined);
   const decorationsRef = useRef<
     editor.IEditorDecorationsCollection | undefined
@@ -32,8 +39,8 @@ export function FlowOriginPane({ file, origin, onEditor }: FlowOriginPaneProps) 
     const model = editorInstance.getModel();
     if (!model) return;
     const lineCount = model.getLineCount();
-    decorationsRef.current?.set(originDecoration(origin, lineCount));
-    const range = focusRange(origin, lineCount);
+    decorationsRef.current?.set(originDecoration(from, kind, lineCount));
+    const range = focusRange({ file: file.path, range: from }, lineCount);
     revealRef.current?.dispose();
     if (range) {
       revealRef.current = revealRangeInCenterSettled(
@@ -51,16 +58,13 @@ export function FlowOriginPane({ file, origin, onEditor }: FlowOriginPaneProps) 
     onEditorRef.current(editorInstance);
   };
 
-  // 同じファイルのまま from だけが変わったとき（同一ファイル内の踏み込み）に装飾を付け直す。
+  // 同じファイルのまま参照元だけが変わったとき（同一ファイル内のジャンプ）に装飾を付け直す。
+  // ファイルが替わるときの旧モデルの装飾は Monaco が setModel 時に所有者単位で消す。
   useEffect(() => {
     if (editorRef.current) reveal(editorRef.current);
-    // 装飾 ID はモデルごとに固有で、モデルが差し替わると collection からは二度と消せない
-    // （keepCurrentModel で生き残る旧モデルに残り、同じファイルへ戻ると前回の式も光る）。
-    // モデル差し替え（子の path 反映）より先に走るこの cleanup で必ず消しておく。
-    return () => decorationsRef.current?.clear();
-    // reveal は origin だけに依存する。
+    // reveal は from と kind だけに依存する。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [origin]);
+  }, [from, kind]);
 
   useEffect(
     () => () => {

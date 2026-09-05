@@ -25,17 +25,19 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
     renderSideBySide: boolean;
     jumpTarget?: { range: { startLine: number } };
     onOpenFileReference(reference: { file: string }): void;
-    flowOrigin?: { origin: { file: string } };
-    nextHop?: { target: { range: { startLine: number } } };
-    onAdvanceHop(): void;
+    jumps: { id: string }[];
+    jumpView?: { path: unknown[] };
+    onOpenJump(jump: { id: string }): void;
+    onJumpBack(depth: number): void;
   }) => (
     <div
       data-testid="code-viewer"
       data-view-mode={props.viewMode}
       data-side-by-side={String(props.renderSideBySide)}
       data-jump-line={props.jumpTarget?.range.startLine}
-      data-flow-origin={props.flowOrigin?.origin.file}
-      data-next-hop-line={props.nextHop?.target.range.startLine}
+      data-viewer-file={props.file?.path}
+      data-jump-count={props.jumps.length}
+      data-jump-depth={props.jumpView?.path.length ?? 0}
     >
       {props.file?.path ?? "(ファイル未選択)"}
       {/* 注釈カードのファイルリンクの代わり。同じ経路で開けることを見る。 */}
@@ -45,9 +47,15 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
       >
         注釈からロゴを開く
       </button>
-      {/* 次ホップの式をクリックする代わり。 */}
-      <button type="button" onClick={() => props.onAdvanceHop()}>
-        次ホップへ踏み込む
+      {/* ジャンプの式をクリックする代わり。 */}
+      <button
+        type="button"
+        onClick={() => props.jumps[0] && props.onOpenJump(props.jumps[0])}
+      >
+        最初のジャンプを開く
+      </button>
+      <button type="button" onClick={() => props.onJumpBack(0)}>
+        ジャンプを閉じる
       </button>
     </div>
   ),
@@ -263,66 +271,87 @@ describe("説明文のファイル参照", () => {
   });
 });
 
-describe("処理の流れを追う（from）", () => {
-  // fixture の step-2 は src/lib.rs:1 の `answer` から踏み込む from を持つ。
-  const stepWithOrigin = fixtures.reviewResult.tour.steps[1];
-
-  it("次ステップの from が今のファイルにあれば印が出て、進むと呼び出し元が上段に出る", async () => {
+describe("ジャンプ（識別子から定義へ）", () => {
+  // fixture の step-1 は src/lib.rs:1 の `answer` から、その定義（src/lib.rs:1-3）へのジャンプを持つ。
+  it("ステップの範囲にジャンプの印が出て、開くと定義が下段に出る。ステップは動かない", async () => {
     fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
     renderApp();
     await screen.findByText("デモリポジトリのレビュー");
     const viewer = screen.getByTestId("code-viewer");
-    await waitFor(() => expect(viewer.textContent).toContain("src/lib.rs"));
-
-    // 1 ステップ目: 次ホップの印（2 ステップ目の from の行）だけが出る。
     await waitFor(() =>
-      expect(viewer.getAttribute("data-next-hop-line")).toBe(
-        String(stepWithOrigin.from?.range.startLine),
-      ),
+      expect(viewer.getAttribute("data-viewer-file")).toBe("src/lib.rs"),
     );
-    expect(viewer.getAttribute("data-flow-origin")).toBeNull();
+    await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("1"));
+    expect(viewer.getAttribute("data-jump-depth")).toBe("0");
+    // 右パネルにも同じジャンプの一覧が出る。
+    expect(
+      screen.getByRole("button", { name: "answer の定義へ（踏み込む）" }),
+    ).toBeTruthy();
 
-    // 式をクリック（スタブのボタン）すると 2 ステップ目へ進み、from のファイルが上段に出る。
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "次ホップへ踏み込む" }));
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
     });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("1");
+    expect(viewer.getAttribute("data-viewer-file")).toBe("src/lib.rs");
+    expect(screen.getByTestId("current-explanation").textContent).toContain(
+      "エントリポイント",
+    );
+    expect(screen.getByText("固定値を返す。", { exact: false })).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "ジャンプを閉じる" }));
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("0");
+  });
+
+  it("ステップを移動するとジャンプは閉じる", async () => {
+    fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("1"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("1");
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "次のレビューステップ" }),
+      );
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("0");
     expect(screen.getByTestId("current-explanation").textContent).toContain(
       "main から呼ばれます",
     );
-    await waitFor(() =>
-      expect(viewer.getAttribute("data-flow-origin")).toBe(
-        stepWithOrigin.from?.file,
-      ),
-    );
-    // バッジは from の種類で出る。
-    expect(screen.getByText("踏み込む")).toBeTruthy();
-    // 最後のステップなので次ホップは無い。
-    expect(viewer.getAttribute("data-next-hop-line")).toBeNull();
   });
 
-  it("探索中（手動でファイルを開いた後）は上段も印も消える", async () => {
+  it("探索中（手動でファイルを開いた後）はジャンプが閉じて印も消える", async () => {
     fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
     renderApp();
     await screen.findByText("デモリポジトリのレビュー");
     const viewer = screen.getByTestId("code-viewer");
-    await waitFor(() =>
-      expect(viewer.getAttribute("data-next-hop-line")).toBe("1"),
-    );
+    await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("1"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "注釈からロゴを開く" }));
-    await waitFor(() => expect(viewer.textContent).toContain("assets/logo.png"));
-    expect(viewer.getAttribute("data-next-hop-line")).toBeNull();
-    expect(viewer.getAttribute("data-flow-origin")).toBeNull();
+    await waitFor(() =>
+      expect(viewer.getAttribute("data-viewer-file")).toBe("assets/logo.png"),
+    );
+    expect(viewer.getAttribute("data-jump-depth")).toBe("0");
+    expect(viewer.getAttribute("data-jump-count")).toBe("0");
   });
 
-  it("from の無いツアーでは上段も印も出ない", async () => {
+  it("ジャンプの無いツアーでは印が出ない", async () => {
     const plainTour: AgentReviewResult = {
       ...fixtures.reviewResult,
       tour: {
         ...fixtures.reviewResult.tour,
         steps: fixtures.reviewResult.tour.steps.map((step) => ({
           ...step,
-          from: null,
+          jumps: undefined,
         })),
       },
     };
@@ -330,8 +359,10 @@ describe("処理の流れを追う（from）", () => {
     renderApp();
     await screen.findByText("デモリポジトリのレビュー");
     const viewer = screen.getByTestId("code-viewer");
-    await waitFor(() => expect(viewer.textContent).toContain("src/lib.rs"));
-    expect(viewer.getAttribute("data-next-hop-line")).toBeNull();
-    expect(viewer.getAttribute("data-flow-origin")).toBeNull();
+    await waitFor(() =>
+      expect(viewer.getAttribute("data-viewer-file")).toBe("src/lib.rs"),
+    );
+    expect(viewer.getAttribute("data-jump-count")).toBe("0");
+    expect(viewer.getAttribute("data-jump-depth")).toBe("0");
   });
 });

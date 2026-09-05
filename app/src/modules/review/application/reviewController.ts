@@ -16,7 +16,7 @@ export function resolveReviewStep(
       id: annotation.id || `${step.id}-annotation-${index + 1}`,
     })),
     relation: step.relation ?? undefined,
-    origin: step.from ?? undefined,
+    jumps: step.jumps ?? [],
   };
 }
 

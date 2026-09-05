@@ -7,20 +7,20 @@ export type { AgentKind } from "../../shared/snapshot/AgentKind";
 export type { AgentReviewError } from "../../shared/snapshot/AgentReviewError";
 export type { AgentReviewResult } from "../../shared/snapshot/AgentReviewResult";
 export type { CodeAnnotation } from "../../shared/snapshot/CodeAnnotation";
+export type { CodeJump } from "../../shared/snapshot/CodeJump";
 export type { CodeRange } from "../../shared/snapshot/CodeRange";
 export type { CodeTarget } from "../../shared/snapshot/CodeTarget";
-export type { HopKind } from "../../shared/snapshot/HopKind";
+export type { JumpKind } from "../../shared/snapshot/JumpKind";
 export type { JumpRelation } from "../../shared/snapshot/JumpRelation";
 export type { ReviewErrorCode } from "../../shared/snapshot/ReviewErrorCode";
 export type { ReviewRequest } from "../../shared/snapshot/ReviewRequest";
 export type { ReviewStep } from "../../shared/snapshot/ReviewStep";
 export type { ReviewTour } from "../../shared/snapshot/ReviewTour";
-export type { StepOrigin } from "../../shared/snapshot/StepOrigin";
 
 import type { CodeAnnotation } from "../../shared/snapshot/CodeAnnotation";
+import type { CodeJump } from "../../shared/snapshot/CodeJump";
 import type { CodeTarget } from "../../shared/snapshot/CodeTarget";
 import type { JumpRelation } from "../../shared/snapshot/JumpRelation";
-import type { StepOrigin } from "../../shared/snapshot/StepOrigin";
 
 // ---- 以下はフロントエンド専用の型（snapshot payload には現れない） ----
 
@@ -34,6 +34,6 @@ export type ResolvedReviewStep = {
   explanation: string;
   annotations: CodeAnnotation[];
   relation?: JumpRelation;
-  /** どの式から来たか。あればビューアが呼び出し元を上段に出す。 */
-  origin?: StepOrigin;
+  /** 対象範囲内の識別子から定義へ飛ぶジャンプ。無ければ空配列。 */
+  jumps: CodeJump[];
 };

@@ -192,13 +192,13 @@ function App({ services, source, initialMode }: AppProps) {
               }
             >
               <CodeViewer
-                annotations={derived.codeAnnotations}
+                annotations={derived.viewerAnnotations}
                 baseText={workspace.activeBaseText}
-                file={workspace.activeFile}
+                file={derived.viewerFile}
                 changedLines={workspace.activeChangedLines}
-                viewMode={derived.viewMode}
+                viewMode={derived.viewerViewMode}
                 renderSideBySide={derived.renderSideBySide}
-                focus={derived.activeFocus}
+                focus={derived.viewerFocus}
                 focusToken={review.focusToken}
                 isLoading={workspace.isLoadingFile}
                 navigationFiles={derived.navigationFiles}
@@ -208,9 +208,10 @@ function App({ services, source, initialMode }: AppProps) {
                 onOpenFileReference={actions.openFileReference}
                 jumpTarget={derived.jumpTarget}
                 jumpToken={derived.jumpToken}
-                flowOrigin={derived.flowOrigin}
-                nextHop={derived.nextHop}
-                onAdvanceHop={actions.advanceHop}
+                jumps={derived.viewerJumps}
+                onOpenJump={actions.openJump}
+                jumpView={derived.jumpView}
+                onJumpBack={actions.jumpBack}
               />
             </Suspense>
             {workspace.isLoadingFile && <div className="viewer-busy-line" />}
@@ -229,7 +230,10 @@ function App({ services, source, initialMode }: AppProps) {
             currentStepIndex: review.currentStepIndex,
             explanation: review.resolvedStep?.explanation,
             relation: review.resolvedStep?.relation,
-            origin: review.resolvedStep?.origin,
+            jumps: derived.viewerJumps,
+            jumpPath: review.jumpPath,
+            onOpenJump: actions.openJump,
+            onJumpBack: actions.jumpBack,
             isExploring: review.isExploring,
             mode: agentReview.request?.kind,
             warnings: agentReview.warnings ?? [],

@@ -1,7 +1,7 @@
 import type { CodeAnnotation } from "./CodeAnnotation";
+import type { CodeJump } from "./CodeJump";
 import type { CodeTarget } from "./CodeTarget";
 import type { JumpRelation } from "./JumpRelation";
-import type { StepOrigin } from "./StepOrigin";
 
 export type ReviewStep = {
   id: string;
@@ -16,9 +16,9 @@ export type ReviewStep = {
    */
   relation: JumpRelation | null;
   /**
-   * 直前の位置のどの式から来たか。null か省略なら起点、または従来どおりのステップ。
-   * 省略可なのは、このフィールドを知らない古い payload をそのまま読むため。
+   * 対象範囲内の識別子から定義へ飛ぶジャンプ。省略可なのは、このフィールドを
+   * 知らない古い payload をそのまま読むため。
    */
-  from?: StepOrigin | null;
+  jumps?: CodeJump[];
   annotations: Array<CodeAnnotation>;
 };

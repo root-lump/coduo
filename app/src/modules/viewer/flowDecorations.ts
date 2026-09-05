@@ -1,39 +1,58 @@
-// Tour の from（どの式から来たか）に関する Monaco 装飾。
-// 上段（呼び出し元）の式と、下段で次のステップへ進む印になる式を描く。
+// Tour のジャンプ（識別子から定義へ）に関する Monaco 装飾。
+// 今いる範囲の式（クリックで飛べる印）、上段の参照元の式、下段の定義の識別子を描く。
 // decorations.ts と同じく Monaco 実体に依存しない純関数にして、テストはプレーンオブジェクトで行う。
 import type { editor } from "monaco-editor";
-import type { CodeTarget, HopKind, StepOrigin } from "../review";
+import type { CodeJump, CodeRange, JumpKind } from "../review";
+import type { SymbolLocation } from "./codeNavigation";
 import { focusRange } from "./decorations";
 
-/** 次のステップの from。今の対象ファイル内にあるときだけ CodeViewer に渡る。 */
-export type NextHop = {
-  kind: HopKind;
-  target: CodeTarget;
-};
-
-const HOP_COLOR: Record<HopKind, string> = {
+const JUMP_COLOR: Record<JumpKind, string> = {
   callee: "#e2ae57",
   data_flow: "#50d8c3",
-  return: "#61c6d7",
 };
 
-export function hopColor(kind: HopKind): string {
-  return HOP_COLOR[kind];
+export function jumpColor(kind: JumpKind): string {
+  return JUMP_COLOR[kind];
 }
 
-/** 上段用。式そのものと、その行を淡く塗る。 */
-export function originDecoration(
-  origin: StepOrigin,
+function rangeOf(range: CodeRange, lineCount: number) {
+  return focusRange({ file: "", range }, lineCount);
+}
+
+/** 今いる範囲のジャンプ。式ごとにクリックで飛べる印を付ける。 */
+export function jumpDecorations(
+  jumps: CodeJump[],
   lineCount: number,
 ): editor.IModelDeltaDecoration[] {
-  const range = focusRange(origin, lineCount);
+  return jumps.flatMap((jump) => {
+    const range = rangeOf(jump.from, lineCount);
+    if (!range) return [];
+    return [
+      {
+        range,
+        options: {
+          inlineClassName: `flow-jump flow-kind-${jump.kind}`,
+          overviewRuler: { color: jumpColor(jump.kind), position: 4 },
+        },
+      },
+    ];
+  });
+}
+
+/** 上段用。開いているジャンプの参照元の式と、その行を淡く塗る。 */
+export function originDecoration(
+  from: CodeRange,
+  kind: JumpKind,
+  lineCount: number,
+): editor.IModelDeltaDecoration[] {
+  const range = rangeOf(from, lineCount);
   if (!range) return [];
   return [
     {
       range,
       options: {
-        inlineClassName: `flow-origin-range flow-kind-${origin.kind}`,
-        overviewRuler: { color: hopColor(origin.kind), position: 4 },
+        inlineClassName: `flow-origin-range flow-kind-${kind}`,
+        overviewRuler: { color: jumpColor(kind), position: 4 },
       },
     },
     {
@@ -46,36 +65,41 @@ export function originDecoration(
   ];
 }
 
-/** 下段用。次のステップへ進む印になる式。 */
-export function nextHopDecoration(
-  hop: NextHop,
-  lineCount: number,
+/** 下段用。定義の識別子（線の終点）。 */
+export function definitionDecoration(
+  anchor: SymbolLocation | undefined,
 ): editor.IModelDeltaDecoration[] {
-  const range = focusRange(hop.target, lineCount);
-  if (!range) return [];
+  if (!anchor) return [];
   return [
     {
-      range,
-      options: {
-        inlineClassName: `flow-next-hop flow-kind-${hop.kind}`,
-        overviewRuler: { color: hopColor(hop.kind), position: 4 },
+      range: {
+        startLineNumber: anchor.lineNumber,
+        startColumn: anchor.startColumn,
+        endLineNumber: anchor.lineNumber,
+        endColumn: anchor.endColumn,
       },
+      options: { inlineClassName: "flow-definition" },
     },
   ];
 }
 
-/** エディタ上の位置（1 始まり）が次ホップの式の中にあるか。終了列は式の直後なので含めない。 */
-export function isInsideHop(
-  hop: NextHop | undefined,
+/** エディタ上の位置（1 始まり）にあるジャンプ。終了列は式の直後なので含めない。 */
+export function jumpAt(
+  jumps: CodeJump[],
   lineNumber: number,
   column: number,
-): boolean {
-  if (!hop) return false;
-  const { startLine, endLine, startColumn = 1, endColumn } = hop.target.range;
-  if (lineNumber < startLine || lineNumber > endLine) return false;
-  if (lineNumber === startLine && column < startColumn) return false;
-  if (endColumn !== undefined && lineNumber === endLine && column >= endColumn) {
-    return false;
-  }
-  return true;
+): CodeJump | undefined {
+  return jumps.find((jump) => {
+    const { startLine, endLine, startColumn = 1, endColumn } = jump.from;
+    if (lineNumber < startLine || lineNumber > endLine) return false;
+    if (lineNumber === startLine && column < startColumn) return false;
+    if (
+      endColumn !== undefined &&
+      lineNumber === endLine &&
+      column >= endColumn
+    ) {
+      return false;
+    }
+    return true;
+  });
 }

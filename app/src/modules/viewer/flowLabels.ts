@@ -1,12 +1,2 @@
-import type { HopKind } from "../review";
-
-const PANE_LABELS: Record<HopKind, { top: string; bottom: string }> = {
-  callee: { top: "呼び出し元", bottom: "呼び出し先" },
-  data_flow: { top: "値の出どころ", bottom: "値の行き先" },
-  return: { top: "戻る前の位置", bottom: "戻り先" },
-};
-
-/** 分割表示の上段（from）と下段（対象）の役割ラベル。 */
-export function paneLabels(kind: HopKind): { top: string; bottom: string } {
-  return PANE_LABELS[kind];
-}
+/** 分割表示の上段（参照元）と下段（定義）の役割ラベル。ジャンプの飛び先は常に定義。 */
+export const PANE_LABELS = { top: "参照元", bottom: "定義" } as const;

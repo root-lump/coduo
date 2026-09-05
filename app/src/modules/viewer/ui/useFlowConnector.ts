@@ -1,20 +1,27 @@
-// 分割表示で、上段の式（from）と下段の対象範囲を結ぶ線の座標を出す。
+// 分割表示で、上段の参照元の式と下段の定義の識別子を結ぶ線の座標を出す。
 // 両エディタのスクロールとレイアウト、コンテナのサイズ変化に追従し、rAF でまとめて再計算する。
 import { useEffect, useState } from "react";
 import type { editor } from "monaco-editor";
-import type { CodeTarget, StepOrigin } from "../../review";
-import { hopColor } from "../flowDecorations";
+import type { CodeRange, JumpKind } from "../../review";
+import type { SymbolLocation } from "../codeNavigation";
+import { jumpColor } from "../flowDecorations";
 
 type FlowConnectorArgs = {
   container: HTMLElement | null;
   topEditor: editor.ICodeEditor | undefined;
   bottomEditor: editor.ICodeEditor | undefined;
-  /** 分割表示でないときは undefined。線は引かない。 */
-  origin: StepOrigin | undefined;
-  focus: CodeTarget | undefined;
+  /** 参照元の式。分割表示でないときは undefined で、線は引かない。 */
+  from: CodeRange | undefined;
+  kind: JumpKind | undefined;
+  /** 定義の識別子。無ければ線は引かない。 */
+  anchor: SymbolLocation | undefined;
 };
 
-export type FlowConnectorPath = { d: string; end: { x: number; y: number }; color: string };
+export type FlowConnectorPath = {
+  d: string;
+  end: { x: number; y: number };
+  color: string;
+};
 
 type Point = { x: number; y: number };
 
@@ -46,36 +53,43 @@ export function useFlowConnector({
   container,
   topEditor,
   bottomEditor,
-  origin,
-  focus,
+  from,
+  kind,
+  anchor,
 }: FlowConnectorArgs): FlowConnectorPath | undefined {
   const [path, setPath] = useState<FlowConnectorPath | undefined>(undefined);
 
   useEffect(() => {
-    if (!container || !topEditor || !bottomEditor || !origin || !focus) {
+    if (!container || !topEditor || !bottomEditor || !from || !kind || !anchor) {
       setPath(undefined);
       return;
     }
     let frame: number | undefined;
     const compute = () => {
       frame = undefined;
-      const from = pointIn(
+      const start = pointIn(
         topEditor,
         container,
-        origin.range.endLine,
-        origin.range.endColumn ?? origin.range.startColumn ?? 1,
+        from.endLine,
+        from.endColumn ?? from.startColumn ?? 1,
       );
-      const to = pointIn(bottomEditor, container, focus.range.startLine, 1);
-      if (!from || !to) {
+      const end = pointIn(
+        bottomEditor,
+        container,
+        anchor.lineNumber,
+        anchor.startColumn,
+      );
+      if (!start || !end) {
         setPath(undefined);
         return;
       }
-      const start = { x: from.x + 6, y: from.y };
-      const dx = Math.max(40, Math.abs(to.x - start.x) * 0.5);
+      const sx = start.x + 6;
+      const ex = end.x - 4;
+      const dx = Math.max(40, Math.abs(ex - sx) * 0.5);
       setPath({
-        d: `M${start.x},${start.y} C${start.x + dx},${start.y} ${to.x - dx},${to.y} ${to.x},${to.y}`,
-        end: to,
-        color: hopColor(origin.kind),
+        d: `M${sx},${start.y} C${sx + dx},${start.y} ${ex - dx},${end.y} ${ex},${end.y}`,
+        end: { x: ex, y: end.y },
+        color: jumpColor(kind),
       });
     };
     const schedule = () => {
@@ -97,7 +111,7 @@ export function useFlowConnector({
       observer.disconnect();
       if (frame !== undefined) window.cancelAnimationFrame(frame);
     };
-  }, [container, topEditor, bottomEditor, origin, focus]);
+  }, [container, topEditor, bottomEditor, from, kind, anchor]);
 
   return path;
 }

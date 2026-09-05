@@ -16,7 +16,27 @@
           }
         },
         "relation": null,
-        "from": null,
+        "jumps": [
+          {
+            "id": "step-1-jump-1",
+            "kind": "callee",
+            "symbol": "answer",
+            "from": {
+              "startLine": 1,
+              "startColumn": 8,
+              "endLine": 1,
+              "endColumn": 14
+            },
+            "to": {
+              "file": "src/lib.rs",
+              "range": {
+                "startLine": 1,
+                "endLine": 3
+              }
+            },
+            "explanation": "`answer` の定義。固定値を返す。"
+          }
+        ],
         "annotations": [
           {
             "id": "step-1-annotation-1",
@@ -46,17 +66,6 @@
           }
         },
         "relation": "definition",
-        "from": {
-          "kind": "callee",
-          "file": "src/lib.rs",
-          "range": {
-            "startLine": 1,
-            "startColumn": 8,
-            "endLine": 1,
-            "endColumn": 14
-          },
-          "symbol": "answer"
-        },
         "annotations": []
       },
       {
@@ -65,7 +74,6 @@
         "explanation": "読み進める順序のまとめです。",
         "target": null,
         "relation": null,
-        "from": null,
         "annotations": []
       }
     ]

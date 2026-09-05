@@ -2,17 +2,30 @@
 // module 間をまたぐ配線（snapshot の自動展開・Tour の自動読み込み・
 // レビューのフォーカス追従）を持ち、App.tsx はこの controller の結果を描画するだけにする。
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CodeTarget, ReviewMode, ReviewRequest } from "../modules/review";
-import { useAgentReview, useReviewController } from "../modules/review";
+import type {
+  CodeJump,
+  CodeTarget,
+  ReviewMode,
+  ReviewRequest,
+} from "../modules/review";
+import {
+  parentScopeOf,
+  scopeOf,
+  useAgentReview,
+  useReviewController,
+} from "../modules/review";
 import type { FileContent, FileReference } from "../modules/workspace";
 import { parseFileReference, useWorkspace } from "../modules/workspace";
 import type { SymbolIndex } from "../shared/snapshot/SymbolIndex";
 import { usePanelSizing } from "../modules/layout";
 import {
+  definitionsFor,
+  loadCodeNavigationIndex,
   shouldOfferDiff,
-  type NextHop,
+  type SymbolLocation,
   type ViewMode,
 } from "../modules/viewer";
+import type { JumpView } from "../modules/viewer/ui/CodeViewer";
 import { useZoom } from "../modules/zoom";
 import type { AppServices } from "./composition";
 import type { InitialView } from "./initialViewFor";
@@ -196,27 +209,55 @@ export function useAppController(
     agentReview.status === "ready" && activeFocus
       ? (review.resolvedStep?.annotations ?? [])
       : [];
-  // 処理の流れを追う表示。今のステップの from（呼び出し元）は、ツアーに追従している
-  // ときだけ上段に出す。本文は起動時に一括取得した navigationFiles から引く
-  // （workspace.openFile は表示中ファイルを切り替えてしまうので使えない）。
-  const origin = review.resolvedStep?.origin;
-  const originFile =
-    activeFocus && origin
-      ? navigationFiles.find((candidate) => candidate.path === origin.file)
+  // ジャンプ（識別子から定義へ）。今いる範囲（scope）はステップの対象か、開いている
+  // ジャンプの定義。ジャンプを開いている間は下段に定義のファイルを出すが、
+  // workspace.activeFile（ツリーの選択）は動かさない。本文は起動時に一括取得した
+  // navigationFiles から引く（workspace.openFile は表示中ファイルを切り替えてしまう）。
+  const scope = scopeOf(review.currentStep, review.jumpPath);
+  const parentScope = parentScopeOf(review.currentStep, review.jumpPath);
+  const activeJump: CodeJump | undefined =
+    review.jumpPath[review.jumpPath.length - 1];
+  const navigationIndex = useMemo(
+    () => (symbolIndex ? loadCodeNavigationIndex(symbolIndex) : undefined),
+    [symbolIndex],
+  );
+  const fileNamed = (path: string | undefined) =>
+    path ? navigationFiles.find((candidate) => candidate.path === path) : undefined;
+  const jumpTargetFile = fileNamed(activeJump?.to.file);
+  const jumpOriginFile = fileNamed(parentScope?.file);
+  // 線の終点。飛び先の範囲内にある symbol の宣言（validate-tour が存在を保証する）。
+  const definitionAnchor: SymbolLocation | undefined =
+    activeJump && navigationIndex
+      ? definitionsFor(navigationIndex, activeJump.symbol).find(
+          (location) =>
+            location.path === activeJump.to.file &&
+            location.lineNumber >= activeJump.to.range.startLine &&
+            location.lineNumber <= activeJump.to.range.endLine,
+        )
       : undefined;
-  const flowOrigin =
-    origin && originFile ? { origin, file: originFile } : undefined;
-  // 次のステップの from が今のファイル内にあれば、その式をクリックで進む印にする。
-  const nextOrigin = tour.steps[review.currentStepIndex + 1]?.from;
-  const nextHop: NextHop | undefined =
-    nextOrigin &&
-    !review.isExploring &&
-    workspace.activeFile?.path === nextOrigin.file
+  const jumpView: JumpView | undefined =
+    activeJump && !review.isExploring && jumpTargetFile && jumpOriginFile
       ? {
-          kind: nextOrigin.kind,
-          target: { file: nextOrigin.file, range: nextOrigin.range },
+          path: review.jumpPath,
+          originFile: jumpOriginFile,
+          from: activeJump.from,
+          kind: activeJump.kind,
+          anchor: definitionAnchor,
+          rootLabel: targetFile?.split("/").pop() ?? "",
         }
       : undefined;
+  const viewerFile = jumpView ? jumpTargetFile : workspace.activeFile;
+  const viewerFocus: CodeTarget | undefined = jumpView
+    ? activeJump?.to
+    : activeFocus;
+  const viewerAnnotations = jumpView ? [] : codeAnnotations;
+  const viewerViewMode: ViewMode = jumpView ? "code" : effectiveViewMode;
+  // 今いる範囲のジャンプは、ツアーに追従していて、表示中のファイルがその範囲のファイル
+  // のときだけ枠を出す。
+  const viewerJumps: CodeJump[] =
+    !review.isExploring && scope && viewerFile?.path === scope.file
+      ? scope.jumps
+      : [];
   const hasReviewNavigation =
     agentReview.status === "ready" && tour.steps.length > 0;
   const panelSizing = usePanelSizing(snapshot?.selectionKind === "directory");
@@ -233,7 +274,8 @@ export function useAppController(
       selectFileManually,
       jumpToLocation,
       openFileReference,
-      advanceHop: review.goNext,
+      openJump: review.openJump,
+      jumpBack: review.backToDepth,
       toggleViewMode: () =>
         setViewMode((current) => (current === "code" ? "diff" : "code")),
       toggleSideBySide: () => setRenderSideBySide((current) => !current),
@@ -245,8 +287,12 @@ export function useAppController(
       viewMode: effectiveViewMode,
       activeFocus,
       codeAnnotations,
-      flowOrigin,
-      nextHop,
+      viewerFile,
+      viewerFocus,
+      viewerAnnotations,
+      viewerViewMode,
+      viewerJumps,
+      jumpView,
       hasReviewNavigation,
       navigationFiles,
       symbolIndex,

@@ -199,27 +199,104 @@
   inset: 0;
 }
 
-/* ---- Tour の from（処理の流れを追う）: 分割表示 ---- */
+/* ---- Tour のジャンプ（識別子から定義へ）: 分割表示 ---- */
 
-/* 種類ごとの色。右パネルのバッジ（review.css）と同じ変数を使う。 */
+/* ジャンプの種類ごとの色。右パネルの一覧（review.css）と同じ変数を使う。 */
 .flow-kind-callee {
-  --hop-color: var(--hop-callee);
+  --jump-color: var(--jump-callee);
 }
 .flow-kind-data_flow {
-  --hop-color: var(--hop-data-flow);
-}
-.flow-kind-return {
-  --hop-color: var(--hop-return);
+  --jump-color: var(--jump-data-flow);
 }
 
-/* 上段（呼び出し元）と下段（対象）を 45:55 で縦に並べる。比率の調整は持たない。 */
-.code-viewer-split {
+/* 1 面のときの外枠。下段のサブツリーの位置を分割時と揃え、ジャンプの開閉で
+   Monaco を作り直さないための入れ物。 */
+.code-viewer-shell {
   position: relative;
-  isolation: isolate;
-  display: grid;
-  grid-template-rows: auto minmax(0, 45fr) auto minmax(0, 55fr);
   width: 100%;
   height: 100%;
+}
+
+/* ジャンプを開いたとき。パンくず、上段（参照元）、下段（定義）を 45:55 で縦に並べる。
+   比率の調整は持たない。 */
+.code-viewer-split {
+  isolation: isolate;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 45fr) auto minmax(0, 55fr);
+}
+
+.flow-path-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.flow-path-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.flow-path-separator {
+  color: var(--text-faint);
+}
+
+.flow-path-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--jump-color, var(--text));
+  font: inherit;
+  font-family: "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  white-space: nowrap;
+}
+
+.flow-path-chip--root {
+  color: var(--text);
+}
+
+button.flow-path-chip {
+  cursor: pointer;
+}
+
+button.flow-path-chip:hover {
+  border-color: color-mix(in srgb, var(--jump-color, var(--text)) 50%, transparent);
+  background: color-mix(in srgb, var(--jump-color, var(--text)) 12%, transparent);
+}
+
+.flow-path-chip--current {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--jump-color) 16%, transparent);
+}
+
+.flow-path-close {
+  appearance: none;
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.flow-path-close:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
 }
 
 .flow-pane {
@@ -255,43 +332,43 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: var(--hop-color);
+  color: var(--jump-color);
 }
 
 .flow-pane-bar--target .flow-pane-role {
   color: var(--accent-bright);
 }
 
-/* 上段の式と、その行。 */
+/* 上段の参照元の式と、その行。 */
 .monaco-editor .flow-origin-range {
   padding: 0 2px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--hop-color) 18%, transparent);
-  outline: 1px solid var(--hop-color);
-  color: var(--hop-color);
+  background: color-mix(in srgb, var(--jump-color) 18%, transparent);
+  outline: 1px solid var(--jump-color);
+  color: var(--jump-color);
 }
 
 .monaco-editor .flow-origin-line {
-  background: color-mix(in srgb, var(--hop-color) 6%, transparent) !important;
+  background: color-mix(in srgb, var(--jump-color) 6%, transparent) !important;
 }
 
-/* 下段で次のステップへ進む式。非ホバー時は淡い光が枠を周回し、ホバーで止まる。 */
+/* 今いる範囲のジャンプの式。非ホバー時は淡い光が枠を周回し、ホバーで止まる。 */
 @property --ring-angle {
   syntax: "<angle>";
   inherits: false;
   initial-value: 0deg;
 }
 
-.monaco-editor .flow-next-hop {
+.monaco-editor .flow-jump {
   position: relative;
   padding: 0 2px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--hop-color) 16%, transparent);
-  color: var(--hop-color);
+  background: color-mix(in srgb, var(--jump-color) 16%, transparent);
+  color: var(--jump-color);
   cursor: pointer;
 }
 
-.monaco-editor .flow-next-hop::before {
+.monaco-editor .flow-jump::before {
   content: "";
   position: absolute;
   inset: -2px;
@@ -299,12 +376,12 @@
   border-radius: 5px;
   background: conic-gradient(
     from var(--ring-angle),
-    color-mix(in srgb, var(--hop-color) 55%, transparent) 0deg,
-    var(--hop-color) 70deg,
-    color-mix(in srgb, var(--hop-color) 65%, #fff) 95deg,
-    var(--hop-color) 120deg,
-    color-mix(in srgb, var(--hop-color) 55%, transparent) 200deg,
-    color-mix(in srgb, var(--hop-color) 55%, transparent) 360deg
+    color-mix(in srgb, var(--jump-color) 55%, transparent) 0deg,
+    var(--jump-color) 70deg,
+    color-mix(in srgb, var(--jump-color) 65%, #fff) 95deg,
+    var(--jump-color) 120deg,
+    color-mix(in srgb, var(--jump-color) 55%, transparent) 200deg,
+    color-mix(in srgb, var(--jump-color) 55%, transparent) 360deg
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
@@ -314,7 +391,7 @@
     linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--hop-color) 50%, transparent));
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--jump-color) 50%, transparent));
   animation: flow-ring-spin 1.8s linear infinite;
   pointer-events: none;
 }
@@ -325,26 +402,26 @@
   }
 }
 
-.monaco-editor .flow-next-hop:hover::before {
+.monaco-editor .flow-jump:hover::before {
   animation: none;
-  background: var(--hop-color);
+  background: var(--jump-color);
   filter: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .monaco-editor .flow-next-hop::before {
+  .monaco-editor .flow-jump::before {
     animation: none;
   }
 }
 
 /* 式にホバーしたとき、式の直下に左端を揃えて出すタグ（Monaco の content widget）。 */
-.flow-hop-tag {
+.flow-jump-tag {
   appearance: none;
   margin: 3px 0 0 -2px;
   padding: 4px 8px;
   border: 0;
   border-radius: 4px;
-  background: var(--hop-color);
+  background: var(--jump-color);
   color: #0b0d12;
   font-family: var(--sans, Inter, ui-sans-serif, sans-serif);
   font-size: 10.5px;
@@ -355,16 +432,24 @@
   cursor: pointer;
 }
 
-.flow-hop-tag:hover {
+.flow-jump-tag:hover {
   filter: brightness(1.08);
 }
 
-.flow-hop-tag:focus-visible {
+.flow-jump-tag:focus-visible {
   outline: 2px solid var(--text-bright);
   outline-offset: 1px;
 }
 
-/* 上段の式から下段の対象範囲へ引く線。 */
+/* 下段の定義の識別子（線の終点）。 */
+.monaco-editor .flow-definition {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: inset 0 -2px var(--accent-bright);
+}
+
+/* 上段の参照元の式から下段の定義の識別子へ引く線。 */
 .flow-connector {
   position: absolute;
   inset: 0;

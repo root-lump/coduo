@@ -1,26 +1,47 @@
 // コードビューアの view。Monaco のライフサイクルは useMonacoViewer が持ち、
 // ここでは placeholder / エディタ / 注釈レイヤの表示だけを組み立てる。
-// Tour の from があるステップでは、呼び出し元（FlowOriginPane）を上段に足して 2 段にする。
+// ジャンプを開いているときは、参照元（FlowOriginPane）を上段に足して 2 段にする。
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useState, type CSSProperties } from "react";
 import type { editor } from "monaco-editor";
 import { CodeAnnotationLayer } from "./CodeAnnotationLayer";
-import type { CodeAnnotation, CodeTarget, StepOrigin } from "../../review";
+import type {
+  CodeAnnotation,
+  CodeJump,
+  CodeRange,
+  CodeTarget,
+  JumpKind,
+} from "../../review";
 import type { ChangedLine, FileContent, FileReference } from "../../workspace";
 import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
 import { PanelResizeHandle } from "../../layout";
+import type { SymbolLocation } from "../codeNavigation";
 import type { ViewMode } from "../diffView";
-import type { NextHop } from "../flowDecorations";
-import { paneLabels } from "../flowLabels";
+import { PANE_LABELS } from "../flowLabels";
 import { languageFromPath } from "../language";
 import { unavailableMessageFor } from "../unavailableMessage";
 import { CODUO_THEME } from "../monacoEnvironment";
 import { SHARED_EDITOR_OPTIONS } from "./editorOptions";
 import { FlowConnector } from "./FlowConnector";
 import { FlowOriginPane } from "./FlowOriginPane";
+import { JumpPathBar } from "./JumpPathBar";
 import { useAnnotationRailSizing } from "./useAnnotationRailSizing";
 import { useFlowConnector } from "./useFlowConnector";
 import { useMonacoViewer } from "./useMonacoViewer";
+
+/** 開いているジャンプの表示に要るもの。無ければ 1 面表示。 */
+export type JumpView = {
+  /** 開いているジャンプの列。末尾が今見ている定義。 */
+  path: CodeJump[];
+  /** 上段に出す参照元のファイル（末尾のジャンプの from があるファイル）。 */
+  originFile: FileContent;
+  from: CodeRange;
+  kind: JumpKind;
+  /** 下段の定義の識別子。線の終点。 */
+  anchor?: SymbolLocation;
+  /** パンくずの先頭（ステップの対象ファイルの表示名）。 */
+  rootLabel: string;
+};
 
 type CodeViewerProps = {
   annotations: CodeAnnotation[];
@@ -42,11 +63,11 @@ type CodeViewerProps = {
   /** 差分モードで変更前後を左右に並べるか（false なら 1 画面に混ぜて出す）。 */
   renderSideBySide: boolean;
   viewMode: ViewMode;
-  /** 今のステップの from。あれば呼び出し元を上段に出して 2 段にする。 */
-  flowOrigin?: { origin: StepOrigin; file: FileContent };
-  /** 次のステップの from が今のファイル内にあるとき、その式。クリックで進む印になる。 */
-  nextHop?: NextHop;
-  onAdvanceHop(): void;
+  /** 今いる範囲のジャンプ（file 内の式）。クリックで定義へ飛ぶ印を出す。 */
+  jumps: CodeJump[];
+  onOpenJump(jump: CodeJump): void;
+  jumpView?: JumpView;
+  onJumpBack(depth: number): void;
 };
 
 type AnnotationRenderState = {
@@ -84,16 +105,17 @@ export function CodeViewer({
   jumpToken,
   renderSideBySide,
   viewMode,
-  flowOrigin,
-  nextHop,
-  onAdvanceHop,
+  jumps,
+  onOpenJump,
+  jumpView,
+  onJumpBack,
 }: CodeViewerProps) {
   const [dismissedFocusToken, setDismissedFocusToken] = useState<number>();
   // 注釈レールの幅とレイアウトの基準。分割表示では下段のペインを指す。
   const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(
     null,
   );
-  const [splitElement, setSplitElement] = useState<HTMLDivElement | null>(
+  const [shellElement, setShellElement] = useState<HTMLDivElement | null>(
     null,
   );
   const [originEditor, setOriginEditor] = useState<
@@ -119,15 +141,17 @@ export function CodeViewer({
     onOpenLocation,
     jumpTarget,
     jumpToken,
-    nextHop,
-    onAdvanceHop,
+    jumps,
+    definitionAnchor: jumpView?.anchor,
+    onOpenJump,
   });
   const connector = useFlowConnector({
-    container: splitElement,
+    container: shellElement,
     topEditor: originEditor,
     bottomEditor: editorInstance,
-    origin: flowOrigin?.origin,
-    focus,
+    from: jumpView?.from,
+    kind: jumpView?.kind,
+    anchor: jumpView?.anchor,
   });
 
   if (!file) {
@@ -165,6 +189,7 @@ export function CodeViewer({
   });
   const viewerClassName = [
     "code-viewer",
+    jumpView ? "flow-pane flow-pane--target" : "",
     showAnnotations ? "has-code-annotations" : "",
     showAnnotations && rail.isNarrow ? "is-narrow-annotations" : "",
     rail.isResizing ? "is-resizing" : "",
@@ -255,52 +280,62 @@ export function CodeViewer({
       />
     );
 
-  if (!flowOrigin) {
+  // 下段（本体のエディタ）は 1 面でも 2 段でも同じ key の同じ要素にして、
+  // ジャンプの開閉で Monaco を作り直さない（位置が変わると React は要素を捨てる）。
+  const targetPane = (
+    <div
+      key="target"
+      className={viewerClassName}
+      ref={setViewerElement}
+      style={viewerStyle}
+    >
+      <div className="code-editor-surface">{editorElement}</div>
+      {annotationLayer}
+    </div>
+  );
+
+  if (!jumpView) {
     return (
       <div
-        className={viewerClassName}
+        className="code-viewer-shell"
         data-testid="code-viewer"
-        ref={setViewerElement}
-        style={viewerStyle}
+        ref={setShellElement}
       >
-        <div className="code-editor-surface">{editorElement}</div>
-        {annotationLayer}
+        {targetPane}
       </div>
     );
   }
 
-  const labels = paneLabels(flowOrigin.origin.kind);
-  const kindClass = `flow-kind-${flowOrigin.origin.kind}`;
   return (
     <div
-      className={`code-viewer-split ${kindClass}`}
+      className={`code-viewer-shell code-viewer-split flow-kind-${jumpView.kind}`}
       data-testid="code-viewer"
-      ref={setSplitElement}
+      ref={setShellElement}
     >
-      <div className="flow-pane-bar flow-pane-bar--origin">
-        <span className="flow-pane-path">{flowOrigin.file.path}</span>
-        <span className="flow-pane-role">{labels.top}</span>
+      <JumpPathBar
+        key="path"
+        rootLabel={jumpView.rootLabel}
+        path={jumpView.path}
+        onJumpBack={onJumpBack}
+      />
+      <div key="origin-bar" className="flow-pane-bar flow-pane-bar--origin">
+        <span className="flow-pane-path">{jumpView.originFile.path}</span>
+        <span className="flow-pane-role">{PANE_LABELS.top}</span>
       </div>
-      <div className="flow-pane flow-pane--origin">
+      <div key="origin" className="flow-pane flow-pane--origin">
         <FlowOriginPane
-          file={flowOrigin.file}
-          origin={flowOrigin.origin}
+          file={jumpView.originFile}
+          from={jumpView.from}
+          kind={jumpView.kind}
           onEditor={setOriginEditor}
         />
       </div>
-      <div className="flow-pane-bar flow-pane-bar--target">
+      <div key="target-bar" className="flow-pane-bar flow-pane-bar--target">
         <span className="flow-pane-path">{file.path}</span>
-        <span className="flow-pane-role">{labels.bottom}</span>
+        <span className="flow-pane-role">{PANE_LABELS.bottom}</span>
       </div>
-      <div
-        className={`${viewerClassName} flow-pane flow-pane--target`}
-        ref={setViewerElement}
-        style={viewerStyle}
-      >
-        <div className="code-editor-surface">{editorElement}</div>
-        {annotationLayer}
-      </div>
-      <FlowConnector path={connector} />
+      {targetPane}
+      <FlowConnector key="connector" path={connector} />
     </div>
   );
 }

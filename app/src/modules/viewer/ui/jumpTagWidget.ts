@@ -1,12 +1,12 @@
-// 次のステップへ進む式にホバーしたとき、式の直下に出すタグ（Monaco の content widget）。
+// ジャンプの式にホバーしたとき、式の直下に出すタグ（Monaco の content widget）。
 // content widget にするのは、Monaco が行の DOM を作り直しても位置が追従し、
 // クリックを受けられるため。表示・非表示は useMonacoViewer がマウス位置で切り替える。
 import type { editor } from "monaco-editor";
-import { hopLabel } from "../../review";
-import type { NextHop } from "../flowDecorations";
+import { jumpLabel, type CodeJump } from "../../review";
 import { monaco } from "../monacoEnvironment";
 
-type HopTagWidget = {
+export type JumpTagWidget = {
+  jump: CodeJump;
   show(): void;
   hide(): void;
   /** タグそのものの上にマウスがあるか（式から外れてもタグを消さないため）。 */
@@ -14,17 +14,17 @@ type HopTagWidget = {
   dispose(): void;
 };
 
-export function createHopTagWidget(
+export function createJumpTagWidget(
   editorInstance: editor.ICodeEditor,
-  hop: NextHop,
-  onAdvance: () => void,
-): HopTagWidget {
-  const { glyph, label } = hopLabel(hop.kind);
+  jump: CodeJump,
+  onOpen: (jump: CodeJump) => void,
+): JumpTagWidget {
+  const { glyph, label } = jumpLabel(jump.kind);
   const button = document.createElement("button");
   button.type = "button";
-  button.className = `flow-hop-tag flow-kind-${hop.kind}`;
+  button.className = `flow-jump-tag flow-kind-${jump.kind}`;
   button.textContent = `${glyph} ${label}`;
-  button.title = "クリックで次のステップへ進む";
+  button.title = `${jump.symbol} の定義へ`;
   let hovered = false;
   button.addEventListener("mouseenter", () => {
     hovered = true;
@@ -34,13 +34,13 @@ export function createHopTagWidget(
   });
   button.addEventListener("click", (event) => {
     event.preventDefault();
-    onAdvance();
+    onOpen(jump);
   });
 
-  const { startLine, startColumn = 1 } = hop.target.range;
+  const { startLine, startColumn = 1 } = jump.from;
   const widget: editor.IContentWidget = {
     allowEditorOverflow: true,
-    getId: () => `coduo.flow-hop-tag.${hop.target.file}:${startLine}`,
+    getId: () => `coduo.flow-jump-tag.${jump.id}`,
     getDomNode: () => button,
     getPosition: () => ({
       position: { lineNumber: startLine, column: startColumn },
@@ -49,6 +49,7 @@ export function createHopTagWidget(
   };
   let shown = false;
   return {
+    jump,
     show() {
       if (shown) return;
       shown = true;
