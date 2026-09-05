@@ -24,6 +24,8 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
     viewMode: string;
     renderSideBySide: boolean;
     jumpTarget?: { range: { startLine: number } };
+    baseText?: string;
+    changedLines: unknown[];
     onOpenFileReference(reference: { file: string }): void;
     jumps: { id: string }[];
     jumpView?: { path: unknown[] };
@@ -38,6 +40,8 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
       data-viewer-file={props.file?.path}
       data-jump-count={props.jumps.length}
       data-jump-depth={props.jumpView?.path.length ?? 0}
+      data-changed-lines={props.changedLines.length}
+      data-has-base-text={String(props.baseText !== undefined)}
     >
       {props.file?.path ?? "(ファイル未選択)"}
       {/* 注釈カードのファイルリンクの代わり。同じ経路で開けることを見る。 */}
@@ -342,6 +346,72 @@ describe("ジャンプ（識別子から定義へ）", () => {
     );
     expect(viewer.getAttribute("data-jump-depth")).toBe("0");
     expect(viewer.getAttribute("data-jump-count")).toBe("0");
+  });
+
+  it("別ファイルの定義を開いている間は、ステップ側の変更行と変更前本文を渡さない", async () => {
+    // 変更行（fixture は 3 件）と patch はステップの対象ファイル src/lib.rs のもの。
+    // 飛び先の src/main.rs に行番号だけで引かれてはいけない。
+    const mainFile = {
+      path: "src/main.rs",
+      content: "fn main() {\n    println!(\"{}\", demo::answer());\n}\n",
+      language: "rust",
+      lineCount: 3,
+    };
+    fakeWorkspaceGateway.listFileContents.mockResolvedValue([
+      fixtures.fileContent,
+      mainFile,
+    ]);
+    fakeWorkspaceGateway.loadPatch.mockResolvedValue(
+      ["@@ -1,3 +1,3 @@", " pub fn answer() -> u32 {", "-    41", "+    42", " }"].join(
+        "\n",
+      ),
+    );
+    const [firstStep, ...restSteps] = fixtures.reviewResult.tour.steps;
+    const crossFileTour: AgentReviewResult = {
+      ...fixtures.reviewResult,
+      tour: {
+        ...fixtures.reviewResult.tour,
+        steps: [
+          {
+            ...firstStep,
+            jumps: [
+              {
+                id: "step-1-jump-main",
+                kind: "callee",
+                symbol: "answer",
+                from: { startLine: 1, startColumn: 8, endLine: 1, endColumn: 14 },
+                to: { file: "src/main.rs", range: { startLine: 1, endLine: 3 } },
+                explanation: "呼び出し側。",
+              },
+            ],
+          },
+          ...restSteps,
+        ],
+      },
+    };
+    fakeAgentGateway.review.mockResolvedValue(crossFileTour);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("1"));
+    await waitFor(() =>
+      expect(viewer.getAttribute("data-has-base-text")).toBe("true"),
+    );
+    expect(viewer.getAttribute("data-changed-lines")).toBe("3");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+    });
+    expect(viewer.getAttribute("data-viewer-file")).toBe("src/main.rs");
+    expect(viewer.getAttribute("data-changed-lines")).toBe("0");
+    expect(viewer.getAttribute("data-has-base-text")).toBe("false");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "ジャンプを閉じる" }));
+    });
+    expect(viewer.getAttribute("data-viewer-file")).toBe("src/lib.rs");
+    expect(viewer.getAttribute("data-changed-lines")).toBe("3");
+    expect(viewer.getAttribute("data-has-base-text")).toBe("true");
   });
 
   it("ジャンプの無いツアーでは印が出ない", async () => {

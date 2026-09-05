@@ -252,6 +252,11 @@ export function useAppController(
     : activeFocus;
   const viewerAnnotations = jumpView ? [] : codeAnnotations;
   const viewerViewMode: ViewMode = jumpView ? "code" : effectiveViewMode;
+  // 変更行と変更前の全文は workspace.activeFile のもの。ジャンプで別ファイルを
+  // 下段に出している間は渡さない（行番号だけで引くので、別ファイルの無関係な行に
+  // 変更マークが出る）。
+  const viewerChangedLines = jumpView ? [] : workspace.activeChangedLines;
+  const viewerBaseText = jumpView ? undefined : workspace.activeBaseText;
   // 今いる範囲のジャンプは、ツアーに追従していて、表示中のファイルがその範囲のファイル
   // のときだけ枠を出す。
   const viewerJumps: CodeJump[] =
@@ -291,6 +296,8 @@ export function useAppController(
       viewerFocus,
       viewerAnnotations,
       viewerViewMode,
+      viewerChangedLines,
+      viewerBaseText,
       viewerJumps,
       jumpView,
       hasReviewNavigation,

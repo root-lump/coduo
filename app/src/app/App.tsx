@@ -193,9 +193,9 @@ function App({ services, source, initialMode }: AppProps) {
             >
               <CodeViewer
                 annotations={derived.viewerAnnotations}
-                baseText={workspace.activeBaseText}
+                baseText={derived.viewerBaseText}
                 file={derived.viewerFile}
-                changedLines={workspace.activeChangedLines}
+                changedLines={derived.viewerChangedLines}
                 viewMode={derived.viewerViewMode}
                 renderSideBySide={derived.renderSideBySide}
                 focus={derived.viewerFocus}
