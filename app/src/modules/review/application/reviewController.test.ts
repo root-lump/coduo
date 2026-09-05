@@ -52,6 +52,7 @@ describe("resolveReviewStep", () => {
         },
       ],
       relation: "definition",
+      jumps: [],
     });
   });
 
@@ -71,11 +72,37 @@ describe("resolveReviewStep", () => {
       explanation: "全体像の説明",
       annotations: [],
       relation: undefined,
+      jumps: [],
     });
   });
 
   it("returns undefined when a tour has no step", () => {
     expect(resolveReviewStep(undefined)).toBeUndefined();
+  });
+
+  it("carries the step jumps over, defaulting to an empty list", () => {
+    const step: ReviewStep = {
+      id: "callee",
+      title: "Callee",
+      explanation: "踏み込んだ先",
+      target: { file: "lib.rs", range: { startLine: 1, endLine: 3 } },
+      relation: null,
+      jumps: [
+        {
+          id: "callee-jump-1",
+          kind: "callee",
+          symbol: "answer",
+          from: { startLine: 1, startColumn: 8, endLine: 1, endColumn: 14 },
+          to: { file: "lib.rs", range: { startLine: 1, endLine: 3 } },
+          explanation: "定義",
+        },
+      ],
+      annotations: [],
+    };
+
+    expect(resolveReviewStep(step)?.jumps).toHaveLength(1);
+    expect(resolveReviewStep(step)?.jumps[0].symbol).toBe("answer");
+    expect(resolveReviewStep({ ...step, jumps: undefined })?.jumps).toEqual([]);
   });
 });
 

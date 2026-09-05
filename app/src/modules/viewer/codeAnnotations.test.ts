@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  annotationAnchor,
   annotationAtPosition,
   annotationRailHeight,
   containsCodePosition,
@@ -43,23 +44,35 @@ describe("code annotations", () => {
     expect(annotation?.id).toBe("a");
   });
 
-  it("keeps cards ordered and separated inside the viewport when possible", () => {
+  it("keeps cards ordered and separated, centered on their anchors", () => {
     const placements = layoutAnnotationCards(
       [
         { id: "a", top: 80, visible: true },
         { id: "b", top: 90, visible: true },
         { id: "c", top: 100, visible: true },
       ],
-      400,
       80,
       10,
       10,
     );
+    expect(placements[0].cardTop).toBe(40);
     expect(
       placements[1].cardTop - placements[0].cardTop,
     ).toBeGreaterThanOrEqual(90);
     expect(placements[2].cardTop).toBeLessThanOrEqual(310);
     expect(annotationRailHeight(placements, 400, 80, 10)).toBe(400);
+  });
+
+  it("keeps a card attached to an anchor near the bottom and lets the rail scroll", () => {
+    // 表示領域に押し戻すと、低いペインではスクロールしてもカードが動かなくなる。
+    const placements = layoutAnnotationCards(
+      [{ id: "a", top: 380, visible: true }],
+      80,
+      10,
+      10,
+    );
+    expect(placements[0].cardTop).toBe(340);
+    expect(annotationRailHeight(placements, 400, 80, 10)).toBe(430);
   });
 
   it("stacks cards into a taller scrollable rail when they cannot all fit", () => {
@@ -69,7 +82,7 @@ describe("code annotations", () => {
       visible: true,
     }));
 
-    const placements = layoutAnnotationCards(anchors, 300, 80, 10, 10);
+    const placements = layoutAnnotationCards(anchors, 80, 10, 10);
 
     expect(placements[0].cardTop).toBeGreaterThanOrEqual(10);
     placements.forEach((placement, index) => {
@@ -87,19 +100,73 @@ describe("code annotations", () => {
       { id: "b", top: 60, visible: true },
     ];
 
-    const placements = layoutAnnotationCards(
-      anchors,
-      600,
-      80,
-      10,
-      10,
-      "a",
-      240,
-    );
+    const placements = layoutAnnotationCards(anchors, 80, 10, 10, "a", 240);
 
     expect(
       placements[1].cardTop - placements[0].cardTop,
     ).toBeGreaterThanOrEqual(250);
     expect(annotationRailHeight(placements, 600, 80, 10, "a", 240)).toBe(600);
+  });
+});
+
+describe("annotationAnchor", () => {
+  const visibleRanges = [{ startLineNumber: 20, endLineNumber: 40 }];
+
+  it("uses the line center for a visible line", () => {
+    expect(
+      annotationAnchor({
+        id: "a",
+        lineNumber: 30,
+        visibleRanges,
+        position: { top: 200, height: 20 },
+        viewportHeight: 500,
+      }),
+    ).toEqual({ id: "a", top: 210, visible: true });
+  });
+
+  it("treats a line outside the visible ranges as offscreen even when Monaco returns a position", () => {
+    // Monaco は画面外の行にも位置を返す（上に 10 行分スクロールした先など）。
+    expect(
+      annotationAnchor({
+        id: "a",
+        lineNumber: 10,
+        visibleRanges,
+        position: { top: -230, height: 20 },
+        viewportHeight: 500,
+      }),
+    ).toEqual({ id: "a", top: 4, visible: false });
+    expect(
+      annotationAnchor({
+        id: "b",
+        lineNumber: 50,
+        visibleRanges,
+        position: { top: 730, height: 20 },
+        viewportHeight: 500,
+      }),
+    ).toEqual({ id: "b", top: 496, visible: false });
+  });
+
+  it("clamps a partially visible line to the viewport", () => {
+    expect(
+      annotationAnchor({
+        id: "a",
+        lineNumber: 20,
+        visibleRanges,
+        position: { top: -15, height: 20 },
+        viewportHeight: 500,
+      }),
+    ).toEqual({ id: "a", top: 0, visible: true });
+  });
+
+  it("is offscreen when Monaco has no position", () => {
+    expect(
+      annotationAnchor({
+        id: "a",
+        lineNumber: 30,
+        visibleRanges,
+        position: null,
+        viewportHeight: 500,
+      }),
+    ).toEqual({ id: "a", top: 496, visible: false });
   });
 });

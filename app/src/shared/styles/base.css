@@ -54,6 +54,9 @@
   --amber: #e2ae57;
   --red: #ef6a71;
   --cyan: #61c6d7;
+  /* Tour のジャンプ（踏み込む / 値を追う）。右パネルの一覧とエディタの装飾で共用する。 */
+  --jump-callee: #e2ae57;
+  --jump-data-flow: #50d8c3;
 }
 
 * {

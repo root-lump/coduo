@@ -42,9 +42,13 @@ export const ANNOTATION_RAIL_MARGIN = 18;
 /** 選択中のカードは説明を全文表示するため、レイアウト上もこの高さを占有する。 */
 export const EXPANDED_ANNOTATION_CARD_HEIGHT = 330;
 
+/**
+ * カードはアンカーの行の高さに合わせて置き、順序と間隔だけを保つ。表示領域の下端に
+ * 押し戻すことはしない（押し戻すと、低いペインではスクロールに追従しなくなる）。
+ * 下にはみ出した分はレール側のスクロールで見せる。
+ */
 export function layoutAnnotationCards(
   anchors: AnnotationAnchor[],
-  viewportHeight: number,
   cardHeight = ANNOTATION_CARD_HEIGHT,
   gap = ANNOTATION_CARD_GAP,
   margin = ANNOTATION_RAIL_MARGIN,
@@ -54,45 +58,15 @@ export function layoutAnnotationCards(
   if (anchors.length === 0) return [];
   const heightOf = (id: string) =>
     id === selectedId ? selectedHeight : cardHeight;
-  const totalHeight =
-    anchors.reduce((sum, anchor) => sum + heightOf(anchor.id), 0) +
-    Math.max(anchors.length - 1, 0) * gap +
-    margin * 2;
-  const fits = totalHeight <= viewportHeight;
   const placements = anchors.map((anchor) => ({
     ...anchor,
     cardTop: Math.max(anchor.top - heightOf(anchor.id) / 2, margin),
   }));
-  if (fits) {
-    placements.forEach((placement) => {
-      placement.cardTop = Math.min(
-        placement.cardTop,
-        Math.max(margin, viewportHeight - margin - heightOf(placement.id)),
-      );
-    });
-  }
   for (let index = 1; index < placements.length; index += 1) {
     placements[index].cardTop = Math.max(
       placements[index].cardTop,
       placements[index - 1].cardTop + heightOf(placements[index - 1].id) + gap,
     );
-  }
-  // 収まりきる場合だけ画面内へ押し戻す。収まらない場合はレール側をスクロールさせる。
-  if (fits) {
-    const last = placements.at(-1)!;
-    const overflow =
-      last.cardTop + heightOf(last.id) - (viewportHeight - margin);
-    if (overflow > 0) {
-      placements.forEach((placement) => {
-        placement.cardTop -= overflow;
-      });
-      for (let index = placements.length - 2; index >= 0; index -= 1) {
-        placements[index].cardTop = Math.min(
-          placements[index].cardTop,
-          placements[index + 1].cardTop - heightOf(placements[index].id) - gap,
-        );
-      }
-    }
   }
   return placements;
 }
@@ -109,4 +83,37 @@ export function annotationRailHeight(
   if (!last) return viewportHeight;
   const lastHeight = last.id === selectedId ? selectedHeight : cardHeight;
   return Math.max(viewportHeight, last.cardTop + lastHeight + margin);
+}
+
+/**
+ * 注釈のアンカー（コード側の線の起点）。行が可視範囲に無いときは表示領域の上端か
+ * 下端に寄せ、visible を false にする（線は引かず、カードは画面外の見た目になる）。
+ * Monaco の getScrolledVisiblePosition は画面外の行にも非 null の位置を返すので、
+ * 可視かどうかは別に渡す visibleRanges で判定する。
+ */
+export function annotationAnchor(args: {
+  id: string;
+  lineNumber: number;
+  visibleRanges: readonly { startLineNumber: number; endLineNumber: number }[];
+  position: { top: number; height: number } | null;
+  viewportHeight: number;
+}): AnnotationAnchor {
+  const { id, lineNumber, visibleRanges, position, viewportHeight } = args;
+  const visible =
+    position !== null &&
+    visibleRanges.some(
+      (range) =>
+        lineNumber >= range.startLineNumber &&
+        lineNumber <= range.endLineNumber,
+    );
+  if (visible && position) {
+    const center = position.top + position.height / 2;
+    return { id, top: Math.min(Math.max(center, 0), viewportHeight), visible: true };
+  }
+  const firstVisibleLine = visibleRanges[0]?.startLineNumber ?? 1;
+  return {
+    id,
+    top: lineNumber < firstVisibleLine ? 4 : viewportHeight - 4,
+    visible: false,
+  };
 }

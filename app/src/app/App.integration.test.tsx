@@ -24,13 +24,27 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
     viewMode: string;
     renderSideBySide: boolean;
     jumpTarget?: { range: { startLine: number } };
+    baseText?: string;
+    changedLines: unknown[];
     onOpenFileReference(reference: { file: string }): void;
+    jumps: { id: string }[];
+    annotations: { id: string }[];
+    jumpView?: { path: unknown[] };
+    onOpenJump(jump: { id: string }): void;
+    onJumpBack(depth: number): void;
   }) => (
     <div
       data-testid="code-viewer"
       data-view-mode={props.viewMode}
       data-side-by-side={String(props.renderSideBySide)}
       data-jump-line={props.jumpTarget?.range.startLine}
+      data-viewer-file={props.file?.path}
+      data-jump-count={props.jumps.length}
+      data-jump-depth={props.jumpView?.path.length ?? 0}
+      data-annotation-count={props.annotations.length}
+      data-annotation-ids={props.annotations.map((annotation) => annotation.id).join(",")}
+      data-changed-lines={props.changedLines.length}
+      data-has-base-text={String(props.baseText !== undefined)}
     >
       {props.file?.path ?? "(ファイル未選択)"}
       {/* 注釈カードのファイルリンクの代わり。同じ経路で開けることを見る。 */}
@@ -39,6 +53,16 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
         onClick={() => props.onOpenFileReference({ file: "assets/logo.png" })}
       >
         注釈からロゴを開く
+      </button>
+      {/* ジャンプの式をクリックする代わり。 */}
+      <button
+        type="button"
+        onClick={() => props.jumps[0] && props.onOpenJump(props.jumps[0])}
+      >
+        最初のジャンプを開く
+      </button>
+      <button type="button" onClick={() => props.onJumpBack(0)}>
+        ジャンプを閉じる
       </button>
     </div>
   ),
@@ -239,8 +263,6 @@ describe("説明文のファイル参照", () => {
     fakeAgentGateway.review.mockResolvedValue(tourWithReferences);
     renderApp();
     await screen.findByText("デモリポジトリのレビュー");
-    // 初期ステップのファイルが開き終わるのを待つ（開く途中で click すると、
-    // 後から完了した初期ステップの読み込みが表示を上書きする）。
     await waitFor(() =>
       expect(screen.getByTestId("code-viewer").textContent).toContain(
         "src/lib.rs",
@@ -253,5 +275,178 @@ describe("説明文のファイル参照", () => {
         "assets/logo.png",
       ),
     );
+  });
+});
+
+describe("ジャンプ（識別子から定義へ）", () => {
+  // fixture の step-1 は src/lib.rs:1 の `answer` から、その定義（src/lib.rs:1-3）へのジャンプを持つ。
+  it("ステップの範囲にジャンプの印が出て、開くと定義が下段に出る。ステップは動かない", async () => {
+    fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() =>
+      expect(viewer.getAttribute("data-viewer-file")).toBe("src/lib.rs"),
+    );
+    await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("1"));
+    expect(viewer.getAttribute("data-jump-depth")).toBe("0");
+    // ステップの注釈が下段に渡り、右パネルのバッジはステップ分の 1 つ。
+    expect(viewer.getAttribute("data-annotation-ids")).toBe("step-1-annotation-1");
+    expect(screen.getAllByText("コード注釈 1")).toHaveLength(1);
+    // 右パネルにも同じジャンプの一覧が出る。
+    expect(
+      screen.getByRole("button", { name: "answer の定義へ（踏み込む）" }),
+    ).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("1");
+    expect(viewer.getAttribute("data-viewer-file")).toBe("src/lib.rs");
+    expect(screen.getByTestId("current-explanation").textContent).toContain(
+      "エントリポイント",
+    );
+    expect(screen.getByText("固定値を返す。", { exact: false })).toBeTruthy();
+    // 飛び先の注釈（ジャンプの annotations）に切り替わり、バッジはステップ分と
+    // ジャンプ分の 2 つになる。件数は同じなので id で見る。
+    expect(viewer.getAttribute("data-annotation-ids")).toBe(
+      "step-1-jump-1-annotation-1",
+    );
+    expect(screen.getAllByText("コード注釈 1")).toHaveLength(2);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "ジャンプを閉じる" }));
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("0");
+    expect(viewer.getAttribute("data-annotation-ids")).toBe("step-1-annotation-1");
+    expect(screen.getAllByText("コード注釈 1")).toHaveLength(1);
+  });
+
+  it("ステップを移動するとジャンプは閉じる", async () => {
+    fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("1"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("1");
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "次のレビューステップ" }),
+      );
+    });
+    expect(viewer.getAttribute("data-jump-depth")).toBe("0");
+    expect(screen.getByTestId("current-explanation").textContent).toContain(
+      "main から呼ばれます",
+    );
+  });
+
+  it("探索中（手動でファイルを開いた後）はジャンプが閉じて印も消える", async () => {
+    fakeAgentGateway.review.mockResolvedValue(fixtures.reviewResult);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("1"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "注釈からロゴを開く" }));
+    await waitFor(() =>
+      expect(viewer.getAttribute("data-viewer-file")).toBe("assets/logo.png"),
+    );
+    expect(viewer.getAttribute("data-jump-depth")).toBe("0");
+    expect(viewer.getAttribute("data-jump-count")).toBe("0");
+  });
+
+  it("別ファイルの定義を開いている間は、ステップ側の変更行と変更前本文を渡さない", async () => {
+    // 変更行（fixture は 3 件）と patch はステップの対象ファイル src/lib.rs のもの。
+    // 飛び先の src/main.rs に行番号だけで引かれてはいけない。
+    const mainFile = {
+      path: "src/main.rs",
+      content: "fn main() {\n    println!(\"{}\", demo::answer());\n}\n",
+      language: "rust",
+      lineCount: 3,
+    };
+    fakeWorkspaceGateway.listFileContents.mockResolvedValue([
+      fixtures.fileContent,
+      mainFile,
+    ]);
+    fakeWorkspaceGateway.loadPatch.mockResolvedValue(
+      ["@@ -1,3 +1,3 @@", " pub fn answer() -> u32 {", "-    41", "+    42", " }"].join(
+        "\n",
+      ),
+    );
+    const [firstStep, ...restSteps] = fixtures.reviewResult.tour.steps;
+    const crossFileTour: AgentReviewResult = {
+      ...fixtures.reviewResult,
+      tour: {
+        ...fixtures.reviewResult.tour,
+        steps: [
+          {
+            ...firstStep,
+            jumps: [
+              {
+                id: "step-1-jump-main",
+                kind: "callee",
+                symbol: "answer",
+                from: { startLine: 1, startColumn: 8, endLine: 1, endColumn: 14 },
+                to: { file: "src/main.rs", range: { startLine: 1, endLine: 3 } },
+                explanation: "呼び出し側。",
+              },
+            ],
+          },
+          ...restSteps,
+        ],
+      },
+    };
+    fakeAgentGateway.review.mockResolvedValue(crossFileTour);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("1"));
+    await waitFor(() =>
+      expect(viewer.getAttribute("data-has-base-text")).toBe("true"),
+    );
+    expect(viewer.getAttribute("data-changed-lines")).toBe("3");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+    });
+    expect(viewer.getAttribute("data-viewer-file")).toBe("src/main.rs");
+    expect(viewer.getAttribute("data-changed-lines")).toBe("0");
+    expect(viewer.getAttribute("data-has-base-text")).toBe("false");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "ジャンプを閉じる" }));
+    });
+    expect(viewer.getAttribute("data-viewer-file")).toBe("src/lib.rs");
+    expect(viewer.getAttribute("data-changed-lines")).toBe("3");
+    expect(viewer.getAttribute("data-has-base-text")).toBe("true");
+  });
+
+  it("ジャンプの無いツアーでは印が出ない", async () => {
+    const plainTour: AgentReviewResult = {
+      ...fixtures.reviewResult,
+      tour: {
+        ...fixtures.reviewResult.tour,
+        steps: fixtures.reviewResult.tour.steps.map((step) => ({
+          ...step,
+          jumps: undefined,
+        })),
+      },
+    };
+    fakeAgentGateway.review.mockResolvedValue(plainTour);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() =>
+      expect(viewer.getAttribute("data-viewer-file")).toBe("src/lib.rs"),
+    );
+    expect(viewer.getAttribute("data-jump-count")).toBe("0");
+    expect(viewer.getAttribute("data-jump-depth")).toBe("0");
   });
 });
