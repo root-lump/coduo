@@ -8,6 +8,7 @@ export type AnnotationAnchor = {
 
 export type AnnotationCardPlacement = AnnotationAnchor & {
   cardTop: number;
+  cardHeight: number;
 };
 
 export function containsCodePosition(
@@ -35,12 +36,22 @@ export function annotationAtPosition(
   );
 }
 
-/** 見出しの 2 行目（22px）まで含めた通常カードの高さ。viewer.css の max-height と揃える。 */
-export const ANNOTATION_CARD_HEIGHT = 150;
+/**
+ * カードの高さの初期見積もり。実際の高さは内容で決まるため、描画後は実測値で置き換える
+ * （viewer.css の .code-annotation-card の min-height と揃える）。
+ */
+export const ANNOTATION_CARD_HEIGHT = 137;
 export const ANNOTATION_CARD_GAP = 13;
 export const ANNOTATION_RAIL_MARGIN = 18;
-/** 選択中のカードは説明を全文表示するため、レイアウト上もこの高さを占有する。 */
+/** 選択中のカードの初期見積もり。viewer.css の .is-selected の max-height と揃える。 */
 export const EXPANDED_ANNOTATION_CARD_HEIGHT = 330;
+
+export type AnnotationLayoutOptions = {
+  /** カードの実測高さ。実測が入るまでは見積もりを返す。 */
+  heightOf(id: string): number;
+  gap?: number;
+  margin?: number;
+};
 
 /**
  * カードはアンカーの行の高さに合わせて置き、順序と間隔だけを保つ。表示領域の下端に
@@ -49,23 +60,25 @@ export const EXPANDED_ANNOTATION_CARD_HEIGHT = 330;
  */
 export function layoutAnnotationCards(
   anchors: AnnotationAnchor[],
-  cardHeight = ANNOTATION_CARD_HEIGHT,
-  gap = ANNOTATION_CARD_GAP,
-  margin = ANNOTATION_RAIL_MARGIN,
-  selectedId?: string,
-  selectedHeight = cardHeight,
+  {
+    heightOf,
+    gap = ANNOTATION_CARD_GAP,
+    margin = ANNOTATION_RAIL_MARGIN,
+  }: AnnotationLayoutOptions,
 ): AnnotationCardPlacement[] {
-  if (anchors.length === 0) return [];
-  const heightOf = (id: string) =>
-    id === selectedId ? selectedHeight : cardHeight;
-  const placements = anchors.map((anchor) => ({
-    ...anchor,
-    cardTop: Math.max(anchor.top - heightOf(anchor.id) / 2, margin),
-  }));
+  const placements = anchors.map((anchor) => {
+    const cardHeight = heightOf(anchor.id);
+    return {
+      ...anchor,
+      cardHeight,
+      cardTop: Math.max(anchor.top - cardHeight / 2, margin),
+    };
+  });
   for (let index = 1; index < placements.length; index += 1) {
+    const previous = placements[index - 1];
     placements[index].cardTop = Math.max(
       placements[index].cardTop,
-      placements[index - 1].cardTop + heightOf(placements[index - 1].id) + gap,
+      previous.cardTop + previous.cardHeight + gap,
     );
   }
   return placements;
@@ -74,15 +87,11 @@ export function layoutAnnotationCards(
 export function annotationRailHeight(
   placements: AnnotationCardPlacement[],
   viewportHeight: number,
-  cardHeight = ANNOTATION_CARD_HEIGHT,
   margin = ANNOTATION_RAIL_MARGIN,
-  selectedId?: string,
-  selectedHeight = cardHeight,
 ): number {
   const last = placements.at(-1);
   if (!last) return viewportHeight;
-  const lastHeight = last.id === selectedId ? selectedHeight : cardHeight;
-  return Math.max(viewportHeight, last.cardTop + lastHeight + margin);
+  return Math.max(viewportHeight, last.cardTop + last.cardHeight + margin);
 }
 
 /**

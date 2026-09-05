@@ -584,8 +584,8 @@ button.flow-path-chip:hover {
   row-gap: 6px;
   align-content: start;
   width: calc(var(--annotation-rail-width, 358px) - 38px);
+  /* codeAnnotations.ts の ANNOTATION_CARD_HEIGHT（実測前の見積もり）と揃える */
   min-height: 137px;
-  /* codeAnnotations.ts の ANNOTATION_CARD_HEIGHT と揃える */
   max-height: 150px;
   padding: 12px 10px 12px 12px;
   border: 1px solid #343a4a;
