@@ -6,7 +6,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { editor } from "monaco-editor";
 import type { DiffOnMount, OnMount } from "@monaco-editor/react";
-import type { CodeAnnotation, CodeJump, CodeTarget } from "../../review";
+import type {
+  CodeAnnotation,
+  CodeJump,
+  CodeRange,
+  CodeTarget,
+  JumpKind,
+} from "../../review";
 import type { ChangedLine } from "../../workspace";
 import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
 import type { AnnotationAnchor } from "../codeAnnotations";
@@ -22,6 +28,7 @@ import {
   definitionDecoration,
   jumpAt,
   jumpDecorations,
+  originDecoration,
 } from "../flowDecorations";
 import { monaco } from "../monacoEnvironment";
 import type { FileContent } from "../../workspace";
@@ -53,7 +60,13 @@ type UseMonacoViewerArgs = {
   annotations: CodeAnnotation[];
   changedLines: ChangedLine[];
   filePath?: string;
+  /** フォーカス装飾を付ける範囲。 */
   focus?: CodeTarget;
+  /**
+   * 選択と reveal の対象。未指定なら focus。分割表示の上段は範囲全体（focus）を
+   * 装飾しつつ、参照元の式（reveal）を中央に出すために分ける。
+   */
+  reveal?: CodeTarget;
   focusToken: number;
   navigationFiles: FileContent[];
   symbolIndex: SymbolIndex | null;
@@ -64,6 +77,8 @@ type UseMonacoViewerArgs = {
   jumps: CodeJump[];
   /** 開いているジャンプの定義の識別子（このファイル内）。線の終点として装飾する。 */
   definitionAnchor?: SymbolLocation;
+  /** 分割表示の上段用。開いているジャンプの参照元の式（このファイル内）。線の始点として装飾する。 */
+  origin?: { from: CodeRange; kind: JumpKind };
   onOpenJump(jump: CodeJump): void;
 };
 
@@ -88,6 +103,7 @@ export function useMonacoViewer({
   changedLines,
   filePath,
   focus,
+  reveal,
   focusToken,
   navigationFiles,
   symbolIndex,
@@ -96,6 +112,7 @@ export function useMonacoViewer({
   jumpToken,
   jumps,
   definitionAnchor,
+  origin,
   onOpenJump,
 }: UseMonacoViewerArgs) {
   const editorRef = useRef<editor.ICodeEditor | undefined>(undefined);
@@ -201,6 +218,7 @@ export function useMonacoViewer({
     flowDecorationsRef.current?.set([
       ...jumpDecorations(jumps, lineCount),
       ...definitionDecoration(definitionAnchor),
+      ...(origin ? originDecoration(origin.from, origin.kind, lineCount) : []),
     ]);
     schedulePositionUpdate();
   }, [
@@ -209,6 +227,7 @@ export function useMonacoViewer({
     definitionAnchor,
     focus,
     jumps,
+    origin,
     schedulePositionUpdate,
     selectedAnnotationId,
   ]);
@@ -392,19 +411,22 @@ export function useMonacoViewer({
   useEffect(() => {
     applyDecorations();
   }, [applyDecorations, filePath, focusToken, mountToken]);
+  const revealTarget = reveal ?? focus;
   useEffect(() => {
     const editorInstance = editorRef.current;
     const model = editorInstance?.getModel();
-    const range = model ? focusRange(focus, model.getLineCount()) : undefined;
+    const range = model
+      ? focusRange(revealTarget, model.getLineCount())
+      : undefined;
     if (!editorInstance || !range) return;
     editorInstance.setSelection(range);
-    const reveal = revealRangeInCenterSettled(
+    const settled = revealRangeInCenterSettled(
       editorInstance,
       range,
       monaco.editor.ScrollType.Smooth,
     );
-    return () => reveal.dispose();
-  }, [filePath, focus, focusToken, mountToken]);
+    return () => settled.dispose();
+  }, [filePath, revealTarget, focusToken, mountToken]);
   useEffect(
     () => () => {
       editorListenersRef.current?.dispose();

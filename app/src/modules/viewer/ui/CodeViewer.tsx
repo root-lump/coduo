@@ -4,7 +4,6 @@
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useState, type CSSProperties } from "react";
 import type { editor } from "monaco-editor";
-import { CodeAnnotationLayer } from "./CodeAnnotationLayer";
 import type {
   CodeAnnotation,
   CodeJump,
@@ -14,13 +13,16 @@ import type {
 } from "../../review";
 import type { ChangedLine, FileContent, FileReference } from "../../workspace";
 import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
-import { PanelResizeHandle } from "../../layout";
 import type { SymbolLocation } from "../codeNavigation";
 import type { ViewMode } from "../diffView";
 import { PANE_LABELS } from "../flowLabels";
 import { languageFromPath } from "../language";
 import { unavailableMessageFor } from "../unavailableMessage";
 import { CODUO_THEME } from "../monacoEnvironment";
+import {
+  CodeAnnotationRail,
+  shouldRenderCodeAnnotations,
+} from "./CodeAnnotationRail";
 import { SHARED_EDITOR_OPTIONS } from "./editorOptions";
 import { FlowConnector } from "./FlowConnector";
 import { FlowOriginPane } from "./FlowOriginPane";
@@ -37,6 +39,12 @@ export type JumpView = {
   originFile: FileContent;
   from: CodeRange;
   kind: JumpKind;
+  /** 上段に保つ親の範囲（ステップの対象か、1 つ上のジャンプの飛び先）。 */
+  originFocus: CodeTarget;
+  originAnnotations: CodeAnnotation[];
+  originJumps: CodeJump[];
+  /** 上段の変更行。上段のファイルが表示中ファイルと同じときだけ非空。 */
+  originChangedLines: ChangedLine[];
   /** 下段の定義の識別子。線の終点。 */
   anchor?: SymbolLocation;
   /** パンくずの先頭（ステップの対象ファイルの表示名）。 */
@@ -67,26 +75,12 @@ type CodeViewerProps = {
   jumps: CodeJump[];
   onOpenJump(jump: CodeJump): void;
   jumpView?: JumpView;
+  /** 上段（親の範囲）のジャンプを開く。今見ている定義がそれに置き換わる。 */
+  onOpenOriginJump(jump: CodeJump): void;
   onJumpBack(depth: number): void;
 };
 
-type AnnotationRenderState = {
-  annotationCount: number;
-  dismissedFocusToken?: number;
-  focusToken: number;
-  hasViewport: boolean;
-};
-
-export function shouldRenderCodeAnnotations({
-  annotationCount,
-  dismissedFocusToken,
-  focusToken,
-  hasViewport,
-}: AnnotationRenderState): boolean {
-  return (
-    annotationCount > 0 && hasViewport && dismissedFocusToken !== focusToken
-  );
-}
+export { shouldRenderCodeAnnotations };
 
 export function CodeViewer({
   annotations,
@@ -108,6 +102,7 @@ export function CodeViewer({
   jumps,
   onOpenJump,
   jumpView,
+  onOpenOriginJump,
   onJumpBack,
 }: CodeViewerProps) {
   const [dismissedFocusToken, setDismissedFocusToken] = useState<number>();
@@ -200,24 +195,17 @@ export function CodeViewer({
     "--annotation-rail-width": `${rail.width}px`,
   } as CSSProperties;
   const annotationLayer = showAnnotations ? (
-    <>
-      <PanelResizeHandle
-        className="code-annotation-resize-handle"
-        label="注釈パネルの横幅を調整"
-        onResizeStart={rail.startResize}
-      />
-      <CodeAnnotationLayer
-        anchors={anchors}
-        annotations={annotations}
-        height={viewport.height}
-        onClose={() => setDismissedFocusToken(focusToken)}
-        onSelect={(id) => selectAnnotation(id, true)}
-        resolveFileReference={resolveFileReference}
-        onOpenFileReference={onOpenFileReference}
-        selectedId={selectedAnnotationId}
-        width={viewport.width}
-      />
-    </>
+    <CodeAnnotationRail
+      anchors={anchors}
+      annotations={annotations}
+      viewport={viewport}
+      selectedId={selectedAnnotationId}
+      onSelect={(id) => selectAnnotation(id, true)}
+      onClose={() => setDismissedFocusToken(focusToken)}
+      onResizeStart={rail.startResize}
+      resolveFileReference={resolveFileReference}
+      onOpenFileReference={onOpenFileReference}
+    />
   ) : null;
 
   // 差分モードでも注釈とフォーカス装飾は modified 側に付ける（useMonacoViewer）。
@@ -322,14 +310,22 @@ export function CodeViewer({
         <span className="flow-pane-path">{jumpView.originFile.path}</span>
         <span className="flow-pane-role">{PANE_LABELS.top}</span>
       </div>
-      <div key="origin" className="flow-pane flow-pane--origin">
-        <FlowOriginPane
-          file={jumpView.originFile}
-          from={jumpView.from}
-          kind={jumpView.kind}
-          onEditor={setOriginEditor}
-        />
-      </div>
+      <FlowOriginPane
+        key="origin"
+        file={jumpView.originFile}
+        from={jumpView.from}
+        kind={jumpView.kind}
+        focus={jumpView.originFocus}
+        annotations={jumpView.originAnnotations}
+        jumps={jumpView.originJumps}
+        changedLines={jumpView.originChangedLines}
+        focusToken={focusToken}
+        onOpenJump={onOpenOriginJump}
+        rail={rail}
+        resolveFileReference={resolveFileReference}
+        onOpenFileReference={onOpenFileReference}
+        onEditor={setOriginEditor}
+      />
       <div key="target-bar" className="flow-pane-bar flow-pane-bar--target">
         <span className="flow-pane-path">{file.path}</span>
         <span className="flow-pane-role">{PANE_LABELS.bottom}</span>

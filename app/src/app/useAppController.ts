@@ -213,8 +213,23 @@ export function useAppController(
   // ジャンプの定義。ジャンプを開いている間は下段に定義のファイルを出すが、
   // workspace.activeFile（ツリーの選択）は動かさない。本文は起動時に一括取得した
   // navigationFiles から引く（workspace.openFile は表示中ファイルを切り替えてしまう）。
-  const scope = scopeOf(review.currentStep, review.jumpPath);
-  const parentScope = parentScopeOf(review.currentStep, review.jumpPath);
+  // scopeOf は呼ぶたびに注釈の配列を作り直す。ビューアの hook は参照の同一性で
+  // 注釈の選択を初期化するため、ステップとジャンプの列が変わるときだけ作る。
+  const scope = useMemo(
+    () => scopeOf(review.currentStep, review.jumpPath),
+    [review.currentStep, review.jumpPath],
+  );
+  const parentScope = useMemo(
+    () => parentScopeOf(review.currentStep, review.jumpPath),
+    [review.currentStep, review.jumpPath],
+  );
+  const parentFocus: CodeTarget | undefined = useMemo(
+    () =>
+      parentScope
+        ? { file: parentScope.file, range: parentScope.range }
+        : undefined,
+    [parentScope],
+  );
   const activeJump: CodeJump | undefined =
     review.jumpPath[review.jumpPath.length - 1];
   const navigationIndex = useMemo(
@@ -235,17 +250,34 @@ export function useAppController(
             location.lineNumber <= activeJump.to.range.endLine,
         )
       : undefined;
+  // 上段には親の範囲の Tour の表示（フォーカス、注釈、ジャンプ）を保つ。変更行は
+  // workspace.activeFile のものしか無いので、上段がそのファイルのときだけ渡す。
   const jumpView: JumpView | undefined =
-    activeJump && !review.isExploring && jumpTargetFile && jumpOriginFile
+    activeJump &&
+    !review.isExploring &&
+    jumpTargetFile &&
+    jumpOriginFile &&
+    parentScope &&
+    parentFocus
       ? {
           path: review.jumpPath,
           originFile: jumpOriginFile,
           from: activeJump.from,
           kind: activeJump.kind,
+          originFocus: parentFocus,
+          originAnnotations: parentScope.annotations,
+          originJumps: parentScope.jumps,
+          originChangedLines:
+            jumpOriginFile.path === workspace.activeFile?.path
+              ? workspace.activeChangedLines
+              : [],
           anchor: definitionAnchor,
           rootLabel: targetFile?.split("/").pop() ?? "",
         }
       : undefined;
+  // 上段（親の範囲）で選んだジャンプは、今の深さのジャンプと置き換える。
+  const openOriginJump = (jump: CodeJump) =>
+    review.openJumpAt(review.jumpPath.length - 1, jump);
   const viewerFile = jumpView ? jumpTargetFile : workspace.activeFile;
   const viewerFocus: CodeTarget | undefined = jumpView
     ? activeJump?.to
@@ -281,6 +313,7 @@ export function useAppController(
       jumpToLocation,
       openFileReference,
       openJump: review.openJump,
+      openOriginJump,
       jumpBack: review.backToDepth,
       toggleViewMode: () =>
         setViewMode((current) => (current === "code" ? "diff" : "code")),
