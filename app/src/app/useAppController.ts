@@ -250,7 +250,8 @@ export function useAppController(
   const viewerFocus: CodeTarget | undefined = jumpView
     ? activeJump?.to
     : activeFocus;
-  const viewerAnnotations = jumpView ? [] : codeAnnotations;
+  // 注釈は今いる範囲のもの。ジャンプ中は飛び先（ジャンプの annotations）を下段に出す。
+  const viewerAnnotations = jumpView ? (scope?.annotations ?? []) : codeAnnotations;
   const viewerViewMode: ViewMode = jumpView ? "code" : effectiveViewMode;
   // 変更行と変更前の全文は workspace.activeFile のもの。ジャンプで別ファイルを
   // 下段に出している間は渡さない（行番号だけで引くので、別ファイルの無関係な行に

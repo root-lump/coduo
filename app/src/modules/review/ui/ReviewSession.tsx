@@ -205,6 +205,11 @@ function JumpSection({
               </li>
             ))}
           </ol>
+          {(current.annotations?.length ?? 0) > 0 && (
+            <span className="annotation-count-badge">
+              コード注釈 {current.annotations?.length}
+            </span>
+          )}
           <TourMarkdown
             className="jump-explanation"
             text={current.explanation}

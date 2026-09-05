@@ -1,3 +1,4 @@
+import type { CodeAnnotation } from "./CodeAnnotation";
 import type { CodeRange } from "./CodeRange";
 import type { CodeTarget } from "./CodeTarget";
 import type { JumpKind } from "./JumpKind";
@@ -18,7 +19,10 @@ export type CodeJump = {
   from: CodeRange;
   /** 定義。symbolIndex にある symbol の宣言を range 内に含む。 */
   to: CodeTarget;
+  /** 何を見に行くかの短い説明。飛び先での処理の説明は annotations に書く。 */
   explanation: string;
+  /** 飛び先（to）の範囲に置く注釈。target.file は to.file と一致し、範囲は to.range 内。 */
+  annotations?: CodeAnnotation[];
   /** 入れ子のジャンプ。from は to.range 内にある。 */
   jumps?: CodeJump[];
 };

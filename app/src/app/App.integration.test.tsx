@@ -28,6 +28,7 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
     changedLines: unknown[];
     onOpenFileReference(reference: { file: string }): void;
     jumps: { id: string }[];
+    annotations: unknown[];
     jumpView?: { path: unknown[] };
     onOpenJump(jump: { id: string }): void;
     onJumpBack(depth: number): void;
@@ -40,6 +41,7 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
       data-viewer-file={props.file?.path}
       data-jump-count={props.jumps.length}
       data-jump-depth={props.jumpView?.path.length ?? 0}
+      data-annotation-count={props.annotations.length}
       data-changed-lines={props.changedLines.length}
       data-has-base-text={String(props.baseText !== undefined)}
     >
@@ -287,6 +289,9 @@ describe("ジャンプ（識別子から定義へ）", () => {
     );
     await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("1"));
     expect(viewer.getAttribute("data-jump-depth")).toBe("0");
+    // ステップの注釈（1 件）が下段に渡り、右パネルのバッジはステップ分の 1 つ。
+    expect(viewer.getAttribute("data-annotation-count")).toBe("1");
+    expect(screen.getAllByText("コード注釈 1")).toHaveLength(1);
     // 右パネルにも同じジャンプの一覧が出る。
     expect(
       screen.getByRole("button", { name: "answer の定義へ（踏み込む）" }),
@@ -301,11 +306,17 @@ describe("ジャンプ（識別子から定義へ）", () => {
       "エントリポイント",
     );
     expect(screen.getByText("固定値を返す。", { exact: false })).toBeTruthy();
+    // 飛び先の注釈（ジャンプの annotations、1 件）に切り替わり、バッジはステップ分と
+    // ジャンプ分の 2 つになる。
+    expect(viewer.getAttribute("data-annotation-count")).toBe("1");
+    expect(screen.getAllByText("コード注釈 1")).toHaveLength(2);
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "ジャンプを閉じる" }));
     });
     expect(viewer.getAttribute("data-jump-depth")).toBe("0");
+    expect(viewer.getAttribute("data-annotation-count")).toBe("1");
+    expect(screen.getAllByText("コード注釈 1")).toHaveLength(1);
   });
 
   it("ステップを移動するとジャンプは閉じる", async () => {
