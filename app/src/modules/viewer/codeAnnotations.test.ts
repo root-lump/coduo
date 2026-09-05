@@ -44,23 +44,35 @@ describe("code annotations", () => {
     expect(annotation?.id).toBe("a");
   });
 
-  it("keeps cards ordered and separated inside the viewport when possible", () => {
+  it("keeps cards ordered and separated, centered on their anchors", () => {
     const placements = layoutAnnotationCards(
       [
         { id: "a", top: 80, visible: true },
         { id: "b", top: 90, visible: true },
         { id: "c", top: 100, visible: true },
       ],
-      400,
       80,
       10,
       10,
     );
+    expect(placements[0].cardTop).toBe(40);
     expect(
       placements[1].cardTop - placements[0].cardTop,
     ).toBeGreaterThanOrEqual(90);
     expect(placements[2].cardTop).toBeLessThanOrEqual(310);
     expect(annotationRailHeight(placements, 400, 80, 10)).toBe(400);
+  });
+
+  it("keeps a card attached to an anchor near the bottom and lets the rail scroll", () => {
+    // 表示領域に押し戻すと、低いペインではスクロールしてもカードが動かなくなる。
+    const placements = layoutAnnotationCards(
+      [{ id: "a", top: 380, visible: true }],
+      80,
+      10,
+      10,
+    );
+    expect(placements[0].cardTop).toBe(340);
+    expect(annotationRailHeight(placements, 400, 80, 10)).toBe(430);
   });
 
   it("stacks cards into a taller scrollable rail when they cannot all fit", () => {
@@ -70,7 +82,7 @@ describe("code annotations", () => {
       visible: true,
     }));
 
-    const placements = layoutAnnotationCards(anchors, 300, 80, 10, 10);
+    const placements = layoutAnnotationCards(anchors, 80, 10, 10);
 
     expect(placements[0].cardTop).toBeGreaterThanOrEqual(10);
     placements.forEach((placement, index) => {
@@ -88,15 +100,7 @@ describe("code annotations", () => {
       { id: "b", top: 60, visible: true },
     ];
 
-    const placements = layoutAnnotationCards(
-      anchors,
-      600,
-      80,
-      10,
-      10,
-      "a",
-      240,
-    );
+    const placements = layoutAnnotationCards(anchors, 80, 10, 10, "a", 240);
 
     expect(
       placements[1].cardTop - placements[0].cardTop,

@@ -38,7 +38,6 @@ export function CodeAnnotationLayer({
   const [railScrollTop, setRailScrollTop] = useState(0);
   const placements = layoutAnnotationCards(
     anchors,
-    height,
     ANNOTATION_CARD_HEIGHT,
     ANNOTATION_CARD_GAP,
     ANNOTATION_RAIL_MARGIN,

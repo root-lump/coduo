@@ -42,9 +42,13 @@ export const ANNOTATION_RAIL_MARGIN = 18;
 /** 選択中のカードは説明を全文表示するため、レイアウト上もこの高さを占有する。 */
 export const EXPANDED_ANNOTATION_CARD_HEIGHT = 330;
 
+/**
+ * カードはアンカーの行の高さに合わせて置き、順序と間隔だけを保つ。表示領域の下端に
+ * 押し戻すことはしない（押し戻すと、低いペインではスクロールに追従しなくなる）。
+ * 下にはみ出した分はレール側のスクロールで見せる。
+ */
 export function layoutAnnotationCards(
   anchors: AnnotationAnchor[],
-  viewportHeight: number,
   cardHeight = ANNOTATION_CARD_HEIGHT,
   gap = ANNOTATION_CARD_GAP,
   margin = ANNOTATION_RAIL_MARGIN,
@@ -54,45 +58,15 @@ export function layoutAnnotationCards(
   if (anchors.length === 0) return [];
   const heightOf = (id: string) =>
     id === selectedId ? selectedHeight : cardHeight;
-  const totalHeight =
-    anchors.reduce((sum, anchor) => sum + heightOf(anchor.id), 0) +
-    Math.max(anchors.length - 1, 0) * gap +
-    margin * 2;
-  const fits = totalHeight <= viewportHeight;
   const placements = anchors.map((anchor) => ({
     ...anchor,
     cardTop: Math.max(anchor.top - heightOf(anchor.id) / 2, margin),
   }));
-  if (fits) {
-    placements.forEach((placement) => {
-      placement.cardTop = Math.min(
-        placement.cardTop,
-        Math.max(margin, viewportHeight - margin - heightOf(placement.id)),
-      );
-    });
-  }
   for (let index = 1; index < placements.length; index += 1) {
     placements[index].cardTop = Math.max(
       placements[index].cardTop,
       placements[index - 1].cardTop + heightOf(placements[index - 1].id) + gap,
     );
-  }
-  // 収まりきる場合だけ画面内へ押し戻す。収まらない場合はレール側をスクロールさせる。
-  if (fits) {
-    const last = placements.at(-1)!;
-    const overflow =
-      last.cardTop + heightOf(last.id) - (viewportHeight - margin);
-    if (overflow > 0) {
-      placements.forEach((placement) => {
-        placement.cardTop -= overflow;
-      });
-      for (let index = placements.length - 2; index >= 0; index -= 1) {
-        placements[index].cardTop = Math.min(
-          placements[index].cardTop,
-          placements[index + 1].cardTop - heightOf(placements[index].id) - gap,
-        );
-      }
-    }
   }
   return placements;
 }
