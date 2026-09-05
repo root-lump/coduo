@@ -23,15 +23,17 @@ const annotations: CodeAnnotation[] = [
   },
 ];
 
-function renderLayer() {
+const visibleAnchors = [
+  { id: "a-1", top: 40, visible: true },
+  { id: "a-2", top: 80, visible: true },
+];
+
+function renderLayer(anchors = visibleAnchors) {
   const onSelect = vi.fn();
   const onOpenFileReference = vi.fn();
   render(
     <CodeAnnotationLayer
-      anchors={[
-        { id: "a-1", top: 40, visible: true },
-        { id: "a-2", top: 80, visible: true },
-      ]}
+      anchors={anchors}
       annotations={annotations}
       height={600}
       width={800}
@@ -91,6 +93,25 @@ describe("CodeAnnotationLayer", () => {
     expect(cards[0].style.top).toBe("18px");
     // 18 + 137 + 13。スケール後の 109.6 で積むと 140.6px になり、カードが重なる。
     expect(cards[1].style.top).toBe("168px");
+  });
+
+  it("画面外のカードは畳んだ高さで積み、後続のカードを押し出さない", () => {
+    const measured: Record<string, number> = { "a-1": 36, "a-2": 137 };
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return measured[this.dataset.annotationId ?? ""] ?? 0;
+      },
+    );
+
+    renderLayer([
+      { id: "a-1", top: 4, visible: false },
+      { id: "a-2", top: 80, visible: true },
+    ]);
+
+    const cards = screen.getAllByTestId("code-annotation-card");
+    expect(cards[0].className).toContain("is-offscreen");
+    // 18 + 36 + 13。畳まずに 137 で積むと 168px になり、低いペインでは表示域を外れる。
+    expect(cards[1].style.top).toBe("67px");
   });
 
   it("本文のファイルリンクは参照を通知し、カードの選択には伝播しない", () => {

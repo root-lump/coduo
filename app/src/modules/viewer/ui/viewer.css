@@ -633,8 +633,25 @@ button.flow-path-chip:hover {
   scrollbar-color: #3b4152 transparent;
 }
 
-.code-annotation-card.is-offscreen {
+/*
+ * アンカーが画面外のカードは番号と見出しだけに畳む。通常の高さのまま積むと、
+ * ペインが低いときに読んでいる行のカードが表示域の外へ押し出される。
+ * カードの高さは実測してレイアウトに渡すので、ここを変えれば配置も追従する。
+ */
+.code-annotation-card.is-offscreen,
+.code-annotation-card.is-offscreen.is-selected {
+  min-height: 0;
+  max-height: 36px;
+  padding: 4px 10px 4px 12px;
   opacity: 0.58;
+}
+
+.code-annotation-card.is-offscreen .code-annotation-body {
+  display: none;
+}
+
+.code-annotation-card.is-offscreen .code-annotation-select strong {
+  -webkit-line-clamp: 1;
 }
 
 .code-annotation-number {
