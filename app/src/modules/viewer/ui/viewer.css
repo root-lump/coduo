@@ -633,25 +633,35 @@ button.flow-path-chip:hover {
   scrollbar-color: #3b4152 transparent;
 }
 
-/*
- * アンカーが画面外のカードは番号と見出しだけに畳む。通常の高さのまま積むと、
- * ペインが低いときに読んでいる行のカードが表示域の外へ押し出される。
- * カードの高さは実測してレイアウトに渡すので、ここを変えれば配置も追従する。
- */
-.code-annotation-card.is-offscreen,
-.code-annotation-card.is-offscreen.is-selected {
-  min-height: 0;
-  max-height: 36px;
-  padding: 4px 10px 4px 12px;
+/* アンカーが画面外のカードは薄くする（畳むかどうかは is-collapsed が決める） */
+.code-annotation-card.is-offscreen {
   opacity: 0.58;
 }
 
-.code-annotation-card.is-offscreen .code-annotation-body {
+/*
+ * 収まらないときに畳むカードは番号と見出しだけにする。通常の高さのまま積むと、
+ * ペインが低いときに読んでいる行のカードが表示域の外へ押し出される。
+ * 高さは番号バッジ（枠込み 30px）の上下に 8px ずつ余白を取った値。
+ * codeAnnotations.ts の COLLAPSED_ANNOTATION_CARD_HEIGHT と揃える。
+ */
+.code-annotation-card.is-collapsed,
+.code-annotation-card.is-collapsed.is-selected {
+  min-height: 0;
+  max-height: 46px;
+  padding: 8px 10px 8px 12px;
+}
+
+.code-annotation-card.is-collapsed .code-annotation-body {
   display: none;
 }
 
-.code-annotation-card.is-offscreen .code-annotation-select strong {
+.code-annotation-card.is-collapsed .code-annotation-select strong {
   -webkit-line-clamp: 1;
+}
+
+/* 1 行に畳むと、上端揃えでは番号バッジ（30px）と見出し（約 17px）の中心がずれる */
+.code-annotation-card.is-collapsed .code-annotation-select {
+  align-items: center;
 }
 
 .code-annotation-number {

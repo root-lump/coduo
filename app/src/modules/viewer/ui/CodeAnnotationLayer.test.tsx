@@ -28,14 +28,14 @@ const visibleAnchors = [
   { id: "a-2", top: 80, visible: true },
 ];
 
-function renderLayer(anchors = visibleAnchors) {
+function renderLayer(anchors = visibleAnchors, height = 600) {
   const onSelect = vi.fn();
   const onOpenFileReference = vi.fn();
   render(
     <CodeAnnotationLayer
       anchors={anchors}
       annotations={annotations}
-      height={600}
+      height={height}
       width={800}
       onClose={() => undefined}
       onSelect={onSelect}
@@ -95,23 +95,34 @@ describe("CodeAnnotationLayer", () => {
     expect(cards[1].style.top).toBe("168px");
   });
 
-  it("画面外のカードは畳んだ高さで積み、後続のカードを押し出さない", () => {
-    const measured: Record<string, number> = { "a-1": 36, "a-2": 137 };
+  const offscreenAnchors = [
+    { id: "a-1", top: 4, visible: false },
+    { id: "a-2", top: 80, visible: true },
+  ];
+
+  it("レールに余裕があれば画面外のカードも畳まない", () => {
+    renderLayer(offscreenAnchors);
+
+    const cards = screen.getAllByTestId("code-annotation-card");
+    expect(cards[0].className).toContain("is-offscreen");
+    expect(cards[0].className).not.toContain("is-collapsed");
+  });
+
+  it("収まらないときは画面外のカードを畳んだ高さで積み、後続のカードを押し出さない", () => {
+    const measured: Record<string, number> = { "a-1": 46, "a-2": 137 };
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
       function (this: HTMLElement) {
         return measured[this.dataset.annotationId ?? ""] ?? 0;
       },
     );
 
-    renderLayer([
-      { id: "a-1", top: 4, visible: false },
-      { id: "a-2", top: 80, visible: true },
-    ]);
+    renderLayer(offscreenAnchors, 300);
 
     const cards = screen.getAllByTestId("code-annotation-card");
-    expect(cards[0].className).toContain("is-offscreen");
-    // 18 + 36 + 13。畳まずに 137 で積むと 168px になり、低いペインでは表示域を外れる。
-    expect(cards[1].style.top).toBe("67px");
+    expect(cards[0].className).toContain("is-collapsed");
+    expect(cards[1].className).not.toContain("is-collapsed");
+    // 18 + 46 + 13。畳まずに選択中の 330 で積むと、後続が表示域を外れる。
+    expect(cards[1].style.top).toBe("77px");
   });
 
   it("本文のファイルリンクは参照を通知し、カードの選択には伝播しない", () => {
