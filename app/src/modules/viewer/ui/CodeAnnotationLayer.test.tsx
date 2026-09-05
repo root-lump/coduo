@@ -93,6 +93,36 @@ describe("CodeAnnotationLayer", () => {
     expect(cards[1].style.top).toBe("168px");
   });
 
+  it("選択が変わると、エディタが動かなくてもレールがそのカードへ寄る", () => {
+    // エディタ上のクリックで選ぶ経路は reveal を伴わないので、アンカーも
+    // カードの高さも動かない。それでも選択中のカードは表示域に入ってほしい。
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(137);
+    const anchors = [
+      { id: "a-1", top: 40, visible: true },
+      { id: "a-2", top: 300, visible: true },
+    ];
+    const props = {
+      anchors,
+      annotations,
+      height: 200,
+      width: 800,
+      onClose: () => undefined,
+      onSelect: () => undefined,
+      resolveFileReference: (text: string) => parseFileReference(text, files),
+      onOpenFileReference: () => undefined,
+    };
+    const { container, rerender } = render(
+      <CodeAnnotationLayer {...props} selectedId="a-1" />,
+    );
+    const rail = container.querySelector(".code-annotation-rail") as HTMLElement;
+    expect(rail.scrollTop).toBe(0);
+
+    rerender(<CodeAnnotationLayer {...props} selectedId="a-2" />);
+
+    // a-2 の cardTop 231.5 から余白 18 を引いた 213.5 を、下端 186.5 に丸めた値。
+    expect(rail.scrollTop).toBeCloseTo(186.5, 1);
+  });
+
   it("本文のファイルリンクは参照を通知し、カードの選択には伝播しない", () => {
     const { onSelect, onOpenFileReference } = renderLayer();
     fireEvent.click(screen.getByRole("button", { name: "src/main.rs:3" }));

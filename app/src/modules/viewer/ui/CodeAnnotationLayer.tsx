@@ -83,7 +83,9 @@ export function CodeAnnotationLayer({
     // 代入で onScroll が飛び railScrollTop も揃う。依存に railScrollTop を含めない
     // ので、その state 更新でこの効果が再び走って往復することはない。
     rail.scrollTop = next;
-  }, [anchorKey, placedHeight]);
+    // 選択はエディタ上のクリックでも起こり、その経路では reveal が走らないので
+    // アンカーも高さも動かない。選択中のカードを基準にするには selectedId が要る。
+  }, [anchorKey, placedHeight, selectedId]);
   const lineStart = Math.max(width - 113, 90);
   // カード左端はエディタ面の右端から 23px（レールの右余白 15px とカードの内側余白）。
   const lineEnd = width + 23;
