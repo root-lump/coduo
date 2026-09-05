@@ -5,6 +5,7 @@ import type { editor } from "monaco-editor";
 import type { CodeRange, JumpKind } from "../../review";
 import type { SymbolLocation } from "../codeNavigation";
 import { jumpColor } from "../flowDecorations";
+import { lineIsVisible } from "./visibleLines";
 
 type FlowConnectorArgs = {
   container: HTMLElement | null;
@@ -25,7 +26,12 @@ export type FlowConnectorPath = {
 
 type Point = { x: number; y: number };
 
-/** エディタ内の位置をコンテナ座標に変換し、そのエディタの縦の範囲に収める。 */
+/**
+ * エディタ内の位置をコンテナ座標に変換し、そのエディタの縦の範囲に収める。
+ * 行が可視範囲の外（仮想化で描画されていない）なら undefined。その行では
+ * getScrolledVisiblePosition の横位置が取れず（-1 起点の値になる）、線の端が
+ * 左端に張り付くため、線を引かない。
+ */
 function pointIn(
   editorInstance: editor.ICodeEditor,
   container: HTMLElement,
@@ -34,6 +40,9 @@ function pointIn(
 ): Point | undefined {
   const dom = editorInstance.getDomNode();
   if (!dom) return undefined;
+  if (!lineIsVisible(editorInstance.getVisibleRanges(), lineNumber)) {
+    return undefined;
+  }
   const position = editorInstance.getScrolledVisiblePosition({
     lineNumber,
     column,
