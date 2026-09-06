@@ -524,6 +524,10 @@ button.flow-path-chip:hover {
 .code-annotation-zone,
 .code-annotation-zone-margin {
   background-color: var(--change-tint, transparent);
+  background-image: linear-gradient(
+    var(--change-text-tint, transparent),
+    var(--change-text-tint, transparent)
+  );
 }
 
 .code-annotation-zone {
@@ -550,16 +554,23 @@ button.flow-path-chip:hover {
   --change-tint: #ef6a7109;
 }
 
-/* 差分モードでは Monaco が行を塗るので、その値に合わせる。 */
+/*
+ * 差分モードでは Monaco が行を塗るので、その値に合わせる。行には 2 枚
+ * 重なっていて、行全体の色（...LineBackground）の上に、変わった文字の色
+ * （...TextBackground）が乗る。追加・削除された行は全体が変わった文字なので、
+ * 1 枚だけだと行より薄くなる。
+ */
 .modified-in-monaco-diff-editor .code-annotation-zone.is-added,
 .modified-in-monaco-diff-editor .code-annotation-zone.is-modified,
 .modified-in-monaco-diff-editor .code-annotation-zone-margin.is-added,
 .modified-in-monaco-diff-editor .code-annotation-zone-margin.is-modified {
   --change-tint: var(--vscode-diffEditor-insertedLineBackground);
+  --change-text-tint: var(--vscode-diffEditor-insertedTextBackground);
 }
 .modified-in-monaco-diff-editor .code-annotation-zone.is-deleted,
 .modified-in-monaco-diff-editor .code-annotation-zone-margin.is-deleted {
   --change-tint: var(--vscode-diffEditor-removedLineBackground);
+  --change-text-tint: var(--vscode-diffEditor-removedTextBackground);
 }
 
 .code-annotation-card {
