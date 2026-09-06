@@ -16,6 +16,10 @@ import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
 import type { SymbolLocation } from "../codeNavigation";
 import type { ViewMode } from "../diffView";
 import { PANE_LABELS } from "../flowLabels";
+import {
+  ANNOTATION_CARD_HEIGHT,
+  ANNOTATION_CARD_OFFSET,
+} from "../codeAnnotations";
 import { languageFromPath } from "../language";
 import { unavailableMessageFor } from "../unavailableMessage";
 import { CODUO_THEME } from "../monacoEnvironment";
@@ -182,6 +186,15 @@ export function CodeViewer({
   ]
     .filter(Boolean)
     .join(" ");
+  // カードは行の直下に重ねるので、末尾の注釈のカードが出るぶんの余白を下に足す。
+  // scrollBeyondLastLine は false で、既定の下余白 30px では最終行付近のカードが
+  // 表示域の外へ出たまま、スクロールしても届かない。
+  const editorPadding = showAnnotations
+    ? {
+        ...SHARED_EDITOR_OPTIONS.padding,
+        bottom: ANNOTATION_CARD_HEIGHT + ANNOTATION_CARD_OFFSET,
+      }
+    : SHARED_EDITOR_OPTIONS.padding;
   const annotationLayer = showAnnotations ? (
     <CodeAnnotationLayer
       anchors={anchors}
@@ -220,6 +233,7 @@ export function CodeViewer({
         onMount={handleDiffMount}
         options={{
           ...SHARED_EDITOR_OPTIONS,
+          padding: editorPadding,
           readOnly: true,
           originalEditable: false,
           renderSideBySide,
@@ -245,6 +259,7 @@ export function CodeViewer({
         onMount={handleMount}
         options={{
           ...SHARED_EDITOR_OPTIONS,
+          padding: editorPadding,
           minimap: {
             enabled: !showAnnotations,
             scale: 1,

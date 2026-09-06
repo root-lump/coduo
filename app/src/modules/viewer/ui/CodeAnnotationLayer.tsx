@@ -51,12 +51,15 @@ export function CodeAnnotationLayer({
   onOpenFileReference,
   selectedId,
 }: CodeAnnotationLayerProps) {
-  const { contentRef, heights } = useAnnotationCardHeights(
-    annotations.map((annotation) => annotation.id).join("\n"),
-  );
   // アンカーが見えていないカードは描かない。押し下げの計算にも入れない
   // （画面外のブロックのカードが、見えているブロックのカードを押し下げてしまう）。
   const visibleAnchors = anchors.filter((anchor) => anchor.visible);
+  // 実測の対象は描画しているカードだけ。スクロールで出入りするので、注釈の集合では
+  // なく描画中の id を鍵にする。集合を鍵にすると、後から現れたカードは一度も測られず
+  // 見積もりのまま積まれ、実測で伸びた分だけ次のカードに重なる。
+  const { contentRef, heights } = useAnnotationCardHeights(
+    visibleAnchors.map((anchor) => anchor.id).join("\n"),
+  );
   const placements = layoutAnnotationCards(visibleAnchors, {
     heightOf: (id) => heights[id] ?? ANNOTATION_CARD_HEIGHT,
   });

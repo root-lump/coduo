@@ -1,4 +1,4 @@
-/* viewer module: コードビューア・Monaco 装飾・コード注釈レール。 */
+/* viewer module: コードビューア・Monaco 装飾・コード注釈。 */
 .viewer-panel {
   display: grid;
   grid-template-rows: 41px minmax(0, 1fr);
@@ -601,7 +601,7 @@ button.flow-path-chip:hover {
 .code-annotation-select {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: start;
   column-gap: 10px;
   min-width: 0;
@@ -624,7 +624,7 @@ button.flow-path-chip:hover {
   display: -webkit-box;
   overflow: hidden;
   color: #e3e5eb;
-  /* 既定のカード幅（見出し列 245px）で 36 字が 2 行に収まる大きさ。 */
+  /* 既定のカード幅（360px、見出し列は約 295px）で 36 字が 2 行に収まる大きさ。 */
   font-size: 13px;
   font-weight: 680;
   line-height: 1.3;

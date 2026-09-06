@@ -15,6 +15,10 @@ import type {
   JumpKind,
 } from "../../review";
 import type { ChangedLine, FileContent, FileReference } from "../../workspace";
+import {
+  ANNOTATION_CARD_HEIGHT,
+  ANNOTATION_CARD_OFFSET,
+} from "../codeAnnotations";
 import { languageFromPath } from "../language";
 import { CODUO_THEME } from "../monacoEnvironment";
 import {
@@ -129,7 +133,13 @@ export function FlowOriginPane({
             minimap: { enabled: false },
             stickyScroll: { enabled: false },
             folding: false,
-            padding: { top: 12, bottom: 12 },
+            // 注釈中は、末尾のブロックのカードが出るぶんの余白を下に足す（CodeViewer と同じ理由）。
+            padding: {
+              top: 12,
+              bottom: showAnnotations
+                ? ANNOTATION_CARD_HEIGHT + ANNOTATION_CARD_OFFSET
+                : 12,
+            },
             renderLineHighlight: "none",
           }}
         />

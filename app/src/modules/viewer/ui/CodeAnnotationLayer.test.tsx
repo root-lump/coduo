@@ -21,6 +21,13 @@ const annotations: CodeAnnotation[] = [
     explanation: "固定値を返します。",
     target: { file: "src/lib.rs", range: { startLine: 2, endLine: 2 } },
   },
+  // アンカーを渡さない限り描かれない。スクロールで後から現れるカードの検証に使う。
+  {
+    id: "a-3",
+    label: "呼び出し",
+    explanation: "main から呼ばれます。",
+    target: { file: "src/lib.rs", range: { startLine: 3, endLine: 3 } },
+  },
 ];
 
 const visibleAnchors = [
@@ -115,6 +122,45 @@ describe("CodeAnnotationLayer", () => {
     expect(cards).toHaveLength(1);
     expect(cards[0].dataset.annotationId).toBe("a-2");
     expect(cards[0].style.top).toBe("306px");
+  });
+
+  it("スクロールで後から現れたカードも実測の高さで積む", () => {
+    // 描画対象は可視のアンカーだけなので、後から現れたカードは初回の計測に居ない。
+    // 注釈の集合を計測の鍵にすると再計測されず、見積もりのまま積んで次のカードが重なる。
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.dataset.annotationId ? 330 : 0;
+      },
+    );
+    const props = {
+      annotations,
+      contentLeft: 64,
+      onClose: () => undefined,
+      onSelect: () => undefined,
+      resolveFileReference: (text: string) => parseFileReference(text, files),
+      onOpenFileReference: () => undefined,
+      selectedId: "a-1",
+    };
+
+    const { rerender } = render(
+      <CodeAnnotationLayer {...props} anchors={[{ id: "a-1", top: 40, visible: true }]} />,
+    );
+    rerender(
+      <CodeAnnotationLayer
+        {...props}
+        anchors={[
+          { id: "a-1", top: 40, visible: true },
+          { id: "a-2", top: 60, visible: true },
+          { id: "a-3", top: 80, visible: true },
+        ]}
+      />,
+    );
+
+    const cards = screen.getAllByTestId("code-annotation-card");
+    expect(cards[0].style.top).toBe("46px");
+    // 46 + 330 + 13。a-2 を見積もりの 137 で積むと 196px になり、a-3 と重なる。
+    expect(cards[1].style.top).toBe("389px");
+    expect(cards[2].style.top).toBe("732px");
   });
 
   it("本文のファイルリンクは参照を通知し、カードの選択には伝播しない", () => {

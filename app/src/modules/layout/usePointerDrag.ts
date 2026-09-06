@@ -8,7 +8,6 @@ type UsePointerDragOptions = {
 /**
  * 横方向のドラッグを window の pointer イベントで追う。
  * ドラッグ中は document に `is-resizing-panels` を付け、カーソルと選択の抑止を CSS に任せる。
- * パネル幅と注釈レール幅のリサイズが共用する。
  */
 export function usePointerDrag({ onMove }: UsePointerDragOptions) {
   const [startX, setStartX] = useState<number>();
