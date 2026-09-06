@@ -7,7 +7,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { editor } from "monaco-editor";
 import type { CodeAnnotation } from "../../review";
-import { ANNOTATION_CARD_HEIGHT } from "../codeAnnotations";
+import type { ChangedLine } from "../../workspace";
+import {
+  annotationChangeKind,
+  ANNOTATION_CARD_HEIGHT,
+} from "../codeAnnotations";
 import { focusRange } from "../decorations";
 
 /** 差分エディタが削除行の zone に使う既定値（10000）より後ろに置くための順序。 */
@@ -21,11 +25,29 @@ export type AnnotationViewZone = {
 type UseAnnotationViewZonesArgs = {
   editorInstance?: editor.ICodeEditor;
   annotations: CodeAnnotation[];
+  /** 行の色をブロックの先頭行に合わせるための変更行。 */
+  changedLines: ChangedLine[];
   /** 表示中のファイル。モデルが差し替わると zone は失われる。 */
   filePath?: string;
   /** エディタ実体が入れ替わった合図。zone は作り直しになる。 */
   mountToken: number;
 };
+
+/**
+ * zone の行に付ける色のクラス。行の色はすぐ下の行（注釈ブロックの先頭行）に
+ * 合わせるので、注釈の配色と変更行の種別から決まる。カードではなく行に付けるのは、
+ * 行に付いた色の帯がカードの左右で途切れると、その行だけ色が抜けて見えるため。
+ */
+function zoneTintClass(
+  annotation: CodeAnnotation,
+  index: number,
+  changedLines: ChangedLine[],
+): string {
+  const kind = annotationChangeKind(annotation, changedLines);
+  return [`annotation-color-${(index % 4) + 1}`, kind ? `is-${kind}` : ""]
+    .filter(Boolean)
+    .join(" ");
+}
 
 /**
  * zone を張り直すべきかの判定に使う署名。annotations の参照ではなく中身で見るのは、
@@ -48,6 +70,7 @@ function zoneSignature(annotations: CodeAnnotation[]): string {
 export function useAnnotationViewZones({
   editorInstance,
   annotations,
+  changedLines,
   filePath,
   mountToken,
 }: UseAnnotationViewZonesArgs) {
@@ -58,7 +81,13 @@ export function useAnnotationViewZones({
   );
   const annotationsRef = useRef(annotations);
   annotationsRef.current = annotations;
-  const signature = zoneSignature(annotations);
+  const changedLinesRef = useRef(changedLines);
+  changedLinesRef.current = changedLines;
+  const signature = `${zoneSignature(annotations)}\n${annotations
+    .map((annotation, index) =>
+      zoneTintClass(annotation, index, changedLines),
+    )
+    .join("\n")}`;
 
   useEffect(() => {
     const model = editorInstance?.getModel();
@@ -69,11 +98,16 @@ export function useAnnotationViewZones({
     const lineCount = model.getLineCount();
     const created: AnnotationViewZone[] = [];
     editorInstance.changeViewZones((accessor) => {
-      for (const annotation of annotationsRef.current) {
+      annotationsRef.current.forEach((annotation, index) => {
         const range = focusRange(annotation.target, lineCount);
-        if (!range) continue;
+        if (!range) return;
+        const tint = zoneTintClass(annotation, index, changedLinesRef.current);
         const domNode = document.createElement("div");
-        domNode.className = "code-annotation-zone";
+        domNode.className = `code-annotation-zone ${tint}`;
+        // 行番号側（余白）は別の DOM になる。渡さないとそこだけ色が付かず、
+        // 行の色の帯がカードの左で途切れる。
+        const marginDomNode = document.createElement("div");
+        marginDomNode.className = `code-annotation-zone-margin ${tint}`;
         const zone: editor.IViewZone = {
           // カードはブロックの上に出す。0 は「先頭行の前」の意味になる。
           afterLineNumber: Math.max(range.startLineNumber - 1, 0),
@@ -83,11 +117,12 @@ export function useAnnotationViewZones({
           ordinal: ANNOTATION_ZONE_ORDINAL,
           heightInPx: ANNOTATION_CARD_HEIGHT,
           domNode,
+          marginDomNode,
         };
         const zoneId = accessor.addZone(zone);
         entriesRef.current.set(annotation.id, { zoneId, zone });
         created.push({ annotationId: annotation.id, domNode });
-      }
+      });
     });
     setZones(created);
     return () => {

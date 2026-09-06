@@ -138,6 +138,7 @@ export function CodeViewer({
   const { zones, setZoneHeight } = useAnnotationViewZones({
     editorInstance,
     annotations,
+    changedLines,
     filePath: file?.path,
     mountToken,
   });

@@ -49,6 +49,7 @@ describe("useAnnotationViewZones", () => {
       useAnnotationViewZones({
         editorInstance: instance,
         annotations,
+        changedLines: [],
         mountToken: 1,
       }),
     );
@@ -75,6 +76,7 @@ describe("useAnnotationViewZones", () => {
       useAnnotationViewZones({
         editorInstance: instance,
         annotations: [annotationAt("a-1", 1, 3)],
+        changedLines: [],
         mountToken: 1,
       }),
     );
@@ -89,6 +91,7 @@ describe("useAnnotationViewZones", () => {
         useAnnotationViewZones({
           editorInstance: instance,
           annotations,
+          changedLines: [],
           mountToken: 1,
         }),
       { initialProps: { annotations: [annotationAt("a-1", 3, 7)] } },
@@ -107,6 +110,7 @@ describe("useAnnotationViewZones", () => {
       useAnnotationViewZones({
         editorInstance: instance,
         annotations: [annotationAt("a-1", 3, 7)],
+        changedLines: [],
         mountToken: 1,
       }),
     );
@@ -122,6 +126,7 @@ describe("useAnnotationViewZones", () => {
       useAnnotationViewZones({
         editorInstance: instance,
         annotations: [annotationAt("a-1", 3, 7)],
+        changedLines: [],
         mountToken: 1,
       }),
     );
@@ -143,6 +148,7 @@ describe("useAnnotationViewZones", () => {
       useAnnotationViewZones({
         editorInstance: instance,
         annotations: [annotationAt("a-1", 3, 7)],
+        changedLines: [],
         mountToken: 1,
       }),
     );
@@ -152,11 +158,37 @@ describe("useAnnotationViewZones", () => {
     expect(layouts).toEqual([]);
   });
 
+  it("行の色のクラスを本文側と余白側の両方に付ける", () => {
+    const { instance, zones } = fakeEditor();
+
+    renderHook(() =>
+      useAnnotationViewZones({
+        editorInstance: instance,
+        annotations: [annotationAt("a-1", 5, 9), annotationAt("a-2", 20, 20)],
+        changedLines: [{ line: 5, kind: "added" }],
+        mountToken: 1,
+      }),
+    );
+
+    const [first, second] = [...zones.values()];
+    expect(first.domNode.className).toBe(
+      "code-annotation-zone annotation-color-1 is-added",
+    );
+    expect(first.marginDomNode?.className).toBe(
+      "code-annotation-zone-margin annotation-color-1 is-added",
+    );
+    // 先頭行が変更行でなければ変更の色は付けない。
+    expect(second.domNode.className).toBe(
+      "code-annotation-zone annotation-color-2",
+    );
+  });
+
   it("エディタが無ければ zone を作らない", () => {
     const { result } = renderHook(() =>
       useAnnotationViewZones({
         editorInstance: undefined,
         annotations: [annotationAt("a-1", 3, 7)],
+        changedLines: [],
         mountToken: 1,
       }),
     );
