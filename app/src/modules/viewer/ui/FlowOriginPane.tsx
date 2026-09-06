@@ -15,10 +15,6 @@ import type {
   JumpKind,
 } from "../../review";
 import type { ChangedLine, FileContent, FileReference } from "../../workspace";
-import {
-  ANNOTATION_CARD_HEIGHT,
-  ANNOTATION_CARD_OFFSET,
-} from "../codeAnnotations";
 import { languageFromPath } from "../language";
 import { CODUO_THEME } from "../monacoEnvironment";
 import {
@@ -26,6 +22,7 @@ import {
   shouldRenderCodeAnnotations,
 } from "./CodeAnnotationLayer";
 import { SHARED_EDITOR_OPTIONS } from "./editorOptions";
+import { useAnnotationViewZones } from "./useAnnotationViewZones";
 import { useMonacoViewer } from "./useMonacoViewer";
 
 const NO_NAVIGATION_FILES: FileContent[] = [];
@@ -74,9 +71,9 @@ export function FlowOriginPane({
   );
   const origin = useMemo(() => ({ from, kind }), [from, kind]);
   const {
-    anchors,
     editorInstance,
     handleMount,
+    mountToken,
     selectAnnotation,
     selectedAnnotationId,
     viewport,
@@ -96,6 +93,13 @@ export function FlowOriginPane({
     definitionAnchor: undefined,
     origin,
     onOpenJump,
+  });
+
+  const { zones, setZoneHeight } = useAnnotationViewZones({
+    editorInstance,
+    annotations,
+    filePath: file.path,
+    mountToken,
   });
 
   const onEditorRef = useRef(onEditor);
@@ -133,22 +137,16 @@ export function FlowOriginPane({
             minimap: { enabled: false },
             stickyScroll: { enabled: false },
             folding: false,
-            // 注釈中は、末尾のブロックのカードが出るぶんの余白を下に足す（CodeViewer と同じ理由）。
-            padding: {
-              top: 12,
-              bottom: showAnnotations
-                ? ANNOTATION_CARD_HEIGHT + ANNOTATION_CARD_OFFSET
-                : 12,
-            },
+            padding: { top: 12, bottom: 12 },
             renderLineHighlight: "none",
           }}
         />
       </div>
       {showAnnotations && (
         <CodeAnnotationLayer
-          anchors={anchors}
           annotations={annotations}
-          contentLeft={viewport.contentLeft}
+          zones={zones}
+          onMeasure={setZoneHeight}
           selectedId={selectedAnnotationId}
           onSelect={(id) => selectAnnotation(id, true)}
           onClose={() => setDismissedFocusToken(focusToken)}

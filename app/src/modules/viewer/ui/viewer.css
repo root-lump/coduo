@@ -515,43 +515,34 @@ button.flow-path-chip:hover {
   pointer-events: none;
 }
 
-/* カードはエディタ面に重ねる。ペインの外へは出さない。 */
-.code-annotation-cards {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
+/* view zone の domNode。幅はコンテンツ領域に従い、行の左端に合わせる。 */
+.code-annotation-zone {
+  /* Monaco は view zone を .view-lines の下に敷くので、重ね順を上げないと
+     カードのクリックが行のレイヤに吸われる。 */
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  padding: 3px 12px 3px 0;
 }
 
 .code-annotation-card {
-  position: absolute;
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
   column-gap: 10px;
   row-gap: 6px;
   align-content: start;
-  /* コードに重ねるので、行の折り返し幅を大きく奪わない範囲に収める。 */
-  width: min(360px, 60%);
-  /* codeAnnotations.ts の ANNOTATION_CARD_HEIGHT（実測前の見積もり）と揃える */
-  min-height: 137px;
-  max-height: 150px;
-  padding: 12px 10px 12px 12px;
+  /* 本文が横へ伸びすぎると読みにくいので、読みやすい幅で止める。 */
+  width: min(640px, 100%);
+  padding: 6px 10px 6px 12px;
   border: 1px solid #343a4a;
   border-left: 2px solid var(--annotation-color);
-  border-radius: 11px;
-  /* 下のコードが透けると本文が読めなくなるので、背景は不透明にする。 */
+  border-radius: 9px;
   background: linear-gradient(145deg, #171b26, #10141d);
-  box-shadow:
-    0 8px 24px #000a,
-    inset 0 1px #ffffff09;
   color: #8c94a4;
   text-align: left;
   cursor: pointer;
-  overflow: hidden;
-  pointer-events: auto;
-  transition:
-    border-color 140ms ease,
-    opacity 140ms ease,
-    transform 140ms ease;
+  transition: border-color 140ms ease;
 }
 
 .code-annotation-card:hover,
@@ -560,24 +551,37 @@ button.flow-path-chip:hover {
   outline: none;
 }
 
+/*
+ * 畳んだカードは番号と見出しだけの 1 行。高さは番号バッジ 22px と上下の余白 5px ずつ、
+ * カードの枠 2px の和で、codeAnnotations.ts の COLLAPSED_ANNOTATION_CARD_HEIGHT と揃える。
+ */
+.code-annotation-card.is-collapsed {
+  align-items: center;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.code-annotation-card.is-collapsed .code-annotation-number {
+  width: 22px;
+  height: 22px;
+}
+
+.code-annotation-card.is-collapsed .code-annotation-select {
+  align-items: center;
+}
+
 .code-annotation-card.is-selected {
-  z-index: 2;
-  max-height: 330px;
+  padding: 10px 10px 12px 12px;
   border-color: color-mix(in srgb, var(--annotation-color) 72%, #454b5c);
   background: linear-gradient(145deg, #202438, #131824);
-  box-shadow:
-    0 12px 34px #000c,
-    0 0 20px color-mix(in srgb, var(--annotation-color) 12%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--annotation-color) 12%, transparent);
   color: #c6cad4;
 }
-/* 選択中は説明を切り詰めず、長い場合はカード内でスクロールさせる */
+
+/* 行間に収まるので、本文は切り詰めずそのまま出す（zone の高さが追従する）。 */
 .code-annotation-card.is-selected .code-annotation-body {
   display: block;
-  max-height: 243px;
-  overflow-y: auto;
   font-size: var(--fs-body);
-  scrollbar-width: thin;
-  scrollbar-color: #3b4152 transparent;
 }
 
 .code-annotation-number {
@@ -624,7 +628,7 @@ button.flow-path-chip:hover {
   display: -webkit-box;
   overflow: hidden;
   color: #e3e5eb;
-  /* 既定のカード幅（360px、見出し列は約 295px）で 36 字が 2 行に収まる大きさ。 */
+  /* 既定のカード幅（640px）で 36 字が 1 行に収まる大きさ。 */
   font-size: 13px;
   font-weight: 680;
   line-height: 1.3;

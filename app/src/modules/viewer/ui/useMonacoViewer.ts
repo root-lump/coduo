@@ -15,13 +15,7 @@ import type {
 } from "../../review";
 import type { ChangedLine } from "../../workspace";
 import type { SymbolIndex } from "../../../shared/snapshot/SymbolIndex";
-import type { AnnotationAnchor } from "../codeAnnotations";
-import {
-  annotationAnchor,
-  annotationAtPosition,
-  ANNOTATION_CARD_HEIGHT,
-  ANNOTATION_CARD_OFFSET,
-} from "../codeAnnotations";
+import { annotationAtPosition } from "../codeAnnotations";
 import {
   annotationDecorations,
   focusDecoration,
@@ -59,32 +53,6 @@ export function subscribeToAnnotationEvents(
     source.onDidChangeModel(onUpdate),
   ];
   return { dispose: () => listeners.forEach((listener) => listener.dispose()) };
-}
-
-/**
- * 注釈の範囲に、その直下へ出るカードの分の行数を足した範囲。reveal の対象にすると
- * ブロックとカードの両方が表示域へ入る。行の高さは折り返しで変わるため、終了行の
- * 次の行との差から測る（Monaco の EditorOption を引かずに済む）。
- */
-export function rangeWithCardRoom<
-  Range extends { startLineNumber: number; endLineNumber: number },
->(
-  editorInstance: Pick<editor.ICodeEditor, "getTopForLineNumber">,
-  range: Range,
-  lineCount: number,
-): Range {
-  const lineHeight = Math.max(
-    editorInstance.getTopForLineNumber(range.endLineNumber + 1) -
-      editorInstance.getTopForLineNumber(range.endLineNumber),
-    1,
-  );
-  const cardLines = Math.ceil(
-    (ANNOTATION_CARD_HEIGHT + ANNOTATION_CARD_OFFSET) / lineHeight,
-  );
-  return {
-    ...range,
-    endLineNumber: Math.min(range.endLineNumber + cardLines, lineCount),
-  };
 }
 
 type UseMonacoViewerArgs = {
@@ -167,14 +135,8 @@ export function useMonacoViewer({
   >(undefined);
   const updateRef = useRef<() => void>(() => undefined);
   const animationFrameRef = useRef<number | undefined>(undefined);
-  const [anchors, setAnchors] = useState<AnnotationAnchor[]>([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string>();
-  // contentLeft は行番号ガターの右端。注釈カードの左位置の基準になる。
-  const [viewport, setViewport] = useState({
-    height: 0,
-    width: 0,
-    contentLeft: 0,
-  });
+  const [viewport, setViewport] = useState({ height: 0, width: 0 });
   const [isEditorMounted, setIsEditorMounted] = useState(false);
   // エディタ実体が入れ替わった（コード ⇄ 差分の切り替え）合図。
   // 新しいエディタにも装飾とフォーカス位置を付け直すため、効果の依存に加える。
@@ -193,45 +155,20 @@ export function useMonacoViewer({
   const onOpenJumpRef = useRef(onOpenJump);
   onOpenJumpRef.current = onOpenJump;
 
-  const updateAnnotationPositions = useCallback(() => {
+  // 注釈カードは view zone が置くので、ここで測るのは注釈を出せるかの判定に使う
+  // ペインの寸法だけ（useAnnotationViewZones が zone を張る）。
+  const updateViewport = useCallback(() => {
     const editorInstance = editorRef.current;
-    const model = editorInstance?.getModel();
-    if (!editorInstance || !model) {
-      setAnchors([]);
-      return;
-    }
+    if (!editorInstance) return;
     const layout = editorInstance.getLayoutInfo();
     const width = surfaceRef.current()?.clientWidth ?? layout.width;
-    const visibleRanges = editorInstance.getVisibleRanges();
-    const nextAnchors = annotations.map((annotation) => {
-      const range = focusRange(annotation.target, model.getLineCount());
-      // カードはブロックの下に出すので、アンカーは終了行に取る。
-      const lineNumber = range ? range.endLineNumber : 1;
-      return annotationAnchor({
-        id: annotation.id,
-        lineNumber,
-        visibleRanges,
-        position: editorInstance.getScrolledVisiblePosition({
-          lineNumber,
-          column: 1,
-        }),
-        viewportHeight: layout.height,
-      });
-    });
     setViewport((current) =>
-      current.height === layout.height &&
-      current.width === width &&
-      current.contentLeft === layout.contentLeft
+      current.height === layout.height && current.width === width
         ? current
-        : {
-            height: layout.height,
-            width,
-            contentLeft: layout.contentLeft,
-          },
+        : { height: layout.height, width },
     );
-    setAnchors(nextAnchors);
-  }, [annotations]);
-  updateRef.current = updateAnnotationPositions;
+  }, []);
+  updateRef.current = updateViewport;
 
   const schedulePositionUpdate = useCallback(() => {
     if (animationFrameRef.current !== undefined)
@@ -287,11 +224,8 @@ export function useMonacoViewer({
       const range = focusRange(annotation.target, model.getLineCount());
       if (range) {
         editorInstance.setSelection(range);
-        // カードはブロックの直下に重なるので、範囲だけを寄せるとカードが表示域の
-        // 下へはみ出す。カードの高さの分だけ範囲を下へ伸ばして、ブロックとカードの
-        // 両方が入るようにする。
         editorInstance.revealRangeInCenterIfOutsideViewport(
-          rangeWithCardRoom(editorInstance, range, model.getLineCount()),
+          range,
           monaco.editor.ScrollType.Smooth,
         );
       }
@@ -487,10 +421,10 @@ export function useMonacoViewer({
   );
 
   return {
-    anchors,
     editorInstance,
     handleDiffMount,
     handleMount,
+    mountToken,
     selectAnnotation,
     selectedAnnotationId,
     viewport,

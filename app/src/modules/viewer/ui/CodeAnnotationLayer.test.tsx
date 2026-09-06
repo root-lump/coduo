@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-// 注釈カードの描画テスト（見出し・Markdown 本文・選択とファイルリンクの切り分け・配置）。
-import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+// 注釈カードの描画テスト（畳んだピルと開いたカード・Markdown 本文・選択の切り分け）。
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import type { CodeAnnotation } from "../../review";
 import { parseFileReference } from "../../workspace";
 import { CodeAnnotationLayer } from "./CodeAnnotationLayer";
+import type { AnnotationViewZone } from "./useAnnotationViewZones";
 
 const files = new Set(["src/lib.rs", "src/main.rs"]);
 
@@ -21,55 +22,66 @@ const annotations: CodeAnnotation[] = [
     explanation: "固定値を返します。",
     target: { file: "src/lib.rs", range: { startLine: 2, endLine: 2 } },
   },
-  // アンカーを渡さない限り描かれない。スクロールで後から現れるカードの検証に使う。
-  {
-    id: "a-3",
-    label: "呼び出し",
-    explanation: "main から呼ばれます。",
-    target: { file: "src/lib.rs", range: { startLine: 3, endLine: 3 } },
-  },
 ];
 
-const visibleAnchors = [
-  { id: "a-1", top: 40, visible: true },
-  { id: "a-2", top: 300, visible: true },
-];
-
-function renderLayer(anchors = visibleAnchors) {
+function renderLayer(zoneIds = ["a-1", "a-2"], selectedId = "a-1") {
   const onSelect = vi.fn();
   const onOpenFileReference = vi.fn();
+  const onMeasure = vi.fn();
+  const zones: AnnotationViewZone[] = zoneIds.map((annotationId) => {
+    const domNode = document.createElement("div");
+    document.body.append(domNode);
+    return { annotationId, domNode };
+  });
   render(
     <CodeAnnotationLayer
-      anchors={anchors}
       annotations={annotations}
-      contentLeft={64}
+      zones={zones}
+      onMeasure={onMeasure}
       onClose={() => undefined}
       onSelect={onSelect}
       resolveFileReference={(text) => parseFileReference(text, files)}
       onOpenFileReference={onOpenFileReference}
-      selectedId="a-1"
+      selectedId={selectedId}
     />,
   );
-  return { onSelect, onOpenFileReference };
+  return { onSelect, onOpenFileReference, onMeasure, zones };
 }
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
 describe("CodeAnnotationLayer", () => {
-  it("見出しと Markdown の本文を描画する", () => {
-    renderLayer();
+  it("zone の中へカードを描く", () => {
+    const { zones } = renderLayer();
+
     const cards = screen.getAllByTestId("code-annotation-card");
     expect(cards).toHaveLength(2);
-    expect(cards[0].querySelector("strong")?.textContent).toBe("公開関数");
+    expect(zones[0].domNode.contains(cards[0])).toBe(true);
+    expect(zones[1].domNode.contains(cards[1])).toBe(true);
+  });
+
+  it("選択中だけ本文を出し、非選択は見出しだけに畳む", () => {
+    renderLayer();
+
+    const cards = screen.getAllByTestId("code-annotation-card");
+    expect(cards[0].className).toContain("is-selected");
     expect(cards[0].querySelector(".code-annotation-body strong")?.textContent).toBe(
       "answer",
     );
+    expect(cards[1].className).toContain("is-collapsed");
+    expect(cards[1].querySelector(".code-annotation-body")).toBeNull();
+    expect(cards[1].querySelector("strong")?.textContent).toBe("戻り値");
+  });
+
+  it("zone の無い注釈は描かない", () => {
+    renderLayer(["a-2"]);
+
+    const cards = screen.getAllByTestId("code-annotation-card");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].dataset.annotationId).toBe("a-2");
   });
 
   it("カードと見出しボタンの click で注釈を選択する", () => {
     const { onSelect } = renderLayer();
+
     fireEvent.click(screen.getAllByTestId("code-annotation-card")[1]);
     expect(onSelect).toHaveBeenLastCalledWith("a-2");
     fireEvent.click(screen.getByRole("button", { name: /1\. 公開関数/ }));
@@ -77,94 +89,24 @@ describe("CodeAnnotationLayer", () => {
     expect(onSelect).toHaveBeenCalledTimes(2);
   });
 
-  it("カードをブロックの直下に、コードの左端へ揃えて置く", () => {
-    const cards = (renderLayer(), screen.getAllByTestId("code-annotation-card"));
-    // 40 + 6（アンカーとカードの間隔）。
-    expect(cards[0].style.top).toBe("46px");
-    expect(cards[0].style.left).toBe("64px");
-    expect(cards[1].style.top).toBe("306px");
-  });
-
-  it("表示倍率が変わっても、カードは実際に占める高さの分だけ間を空ける", () => {
-    // 倍率は documentElement の CSS zoom で変えるため、getBoundingClientRect は
-    // スケール後の値を返す。それで積むとカードが重なる。
-    const measured: Record<string, number> = { "a-1": 137, "a-2": 137 };
+  it("カードの実測高さを zone へ返す", async () => {
+    // 計測は次のフレームで行う（効果の時点では Monaco が zone を繋いでおらず 0 になる）。
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
       function (this: HTMLElement) {
-        return measured[this.dataset.annotationId ?? ""] ?? 0;
-      },
-    );
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-      function (this: HTMLElement) {
-        const height = (measured[this.dataset.annotationId ?? ""] ?? 0) * 0.8;
-        return { height, width: 0, top: 0, left: 0, right: 0, bottom: height, x: 0, y: 0, toJSON: () => ({}) };
+        return this.dataset.annotationId === "a-1" ? 210 : 34;
       },
     );
 
-    renderLayer([
-      { id: "a-1", top: 40, visible: true },
-      { id: "a-2", top: 60, visible: true },
-    ]);
+    const { onMeasure } = renderLayer();
 
-    const cards = screen.getAllByTestId("code-annotation-card");
-    expect(cards[0].style.top).toBe("46px");
-    // 46 + 137 + 13。スケール後の 109.6 で積むと 168.6px になり、カードが重なる。
-    expect(cards[1].style.top).toBe("196px");
-  });
-
-  it("アンカーが画面外のカードは描かず、後続のカードも押し下げない", () => {
-    renderLayer([
-      { id: "a-1", top: 0, visible: false },
-      { id: "a-2", top: 300, visible: true },
-    ]);
-
-    const cards = screen.getAllByTestId("code-annotation-card");
-    expect(cards).toHaveLength(1);
-    expect(cards[0].dataset.annotationId).toBe("a-2");
-    expect(cards[0].style.top).toBe("306px");
-  });
-
-  it("スクロールで後から現れたカードも実測の高さで積む", () => {
-    // 描画対象は可視のアンカーだけなので、後から現れたカードは初回の計測に居ない。
-    // 注釈の集合を計測の鍵にすると再計測されず、見積もりのまま積んで次のカードが重なる。
-    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
-      function (this: HTMLElement) {
-        return this.dataset.annotationId ? 330 : 0;
-      },
-    );
-    const props = {
-      annotations,
-      contentLeft: 64,
-      onClose: () => undefined,
-      onSelect: () => undefined,
-      resolveFileReference: (text: string) => parseFileReference(text, files),
-      onOpenFileReference: () => undefined,
-      selectedId: "a-1",
-    };
-
-    const { rerender } = render(
-      <CodeAnnotationLayer {...props} anchors={[{ id: "a-1", top: 40, visible: true }]} />,
-    );
-    rerender(
-      <CodeAnnotationLayer
-        {...props}
-        anchors={[
-          { id: "a-1", top: 40, visible: true },
-          { id: "a-2", top: 60, visible: true },
-          { id: "a-3", top: 80, visible: true },
-        ]}
-      />,
-    );
-
-    const cards = screen.getAllByTestId("code-annotation-card");
-    expect(cards[0].style.top).toBe("46px");
-    // 46 + 330 + 13。a-2 を見積もりの 137 で積むと 196px になり、a-3 と重なる。
-    expect(cards[1].style.top).toBe("389px");
-    expect(cards[2].style.top).toBe("732px");
+    await waitFor(() => expect(onMeasure).toHaveBeenCalledWith("a-1", 210));
+    expect(onMeasure).toHaveBeenCalledWith("a-2", 34);
+    vi.restoreAllMocks();
   });
 
   it("本文のファイルリンクは参照を通知し、カードの選択には伝播しない", () => {
     const { onSelect, onOpenFileReference } = renderLayer();
+
     fireEvent.click(screen.getByRole("button", { name: "src/main.rs:3" }));
     expect(onOpenFileReference).toHaveBeenCalledWith({
       file: "src/main.rs",
