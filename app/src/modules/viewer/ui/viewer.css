@@ -528,8 +528,8 @@ button.flow-path-chip:hover {
 
 .code-annotation-card {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  column-gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 22px;
+  column-gap: 8px;
   row-gap: 6px;
   align-content: start;
   /* 本文が横へ伸びすぎると読みにくいので、読みやすい幅で止める。 */
@@ -538,11 +538,80 @@ button.flow-path-chip:hover {
   border: 1px solid #343a4a;
   border-left: 2px solid var(--annotation-color);
   border-radius: 9px;
-  background: linear-gradient(145deg, #171b26, #10141d);
+  /*
+   * 背景は、カードのすぐ下の行（注釈ブロックの先頭行）の色を重ねて作る。
+   * 行に付いた色がカードの位置で途切れると、色の帯が突然消えて見える。
+   * 手前から順に、注釈の色（--annotation-tint）、変更行の色（--change-tint）、
+   * 土台の順に敷く。tint は既定では透明で、該当するクラスが値を入れる。
+   */
+  background-color: #12161f;
+  background-image:
+    linear-gradient(var(--annotation-tint, transparent), var(--annotation-tint, transparent)),
+    linear-gradient(var(--change-tint, transparent), var(--change-tint, transparent));
   color: #8c94a4;
   text-align: left;
   cursor: pointer;
   transition: border-color 140ms ease;
+}
+
+/* 行側の .code-annotation-range.annotation-color-N と同じ値を使う。 */
+.code-annotation-card.annotation-color-1 {
+  --annotation-tint: #8b7cf622;
+}
+.code-annotation-card.annotation-color-2 {
+  --annotation-tint: #3cc8b41d;
+}
+.code-annotation-card.annotation-color-3 {
+  --annotation-tint: #ed9b5f1d;
+}
+.code-annotation-card.annotation-color-4 {
+  --annotation-tint: #df6fa81d;
+}
+
+/* コードモードの変更行の色（.git-line-* と同じ値）。 */
+.code-annotation-card.is-added {
+  --change-tint: #3fb9500b;
+}
+.code-annotation-card.is-modified {
+  --change-tint: #d2992209;
+}
+.code-annotation-card.is-deleted {
+  --change-tint: #ef6a7109;
+}
+
+/* 差分モードでは Monaco が行を塗るので、その値に合わせる。 */
+.modified-in-monaco-diff-editor .code-annotation-card.is-added,
+.modified-in-monaco-diff-editor .code-annotation-card.is-modified {
+  --change-tint: var(--vscode-diffEditor-insertedLineBackground);
+}
+.modified-in-monaco-diff-editor .code-annotation-card.is-deleted {
+  --change-tint: var(--vscode-diffEditor-removedLineBackground);
+}
+
+/* 本文を畳むボタン。見出しの右端に置く。 */
+.code-annotation-toggle {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #6f7889;
+  font-size: var(--fs-caption);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.code-annotation-toggle:hover {
+  background: #ffffff0d;
+  color: #c6cad4;
+}
+
+.code-annotation-toggle:focus-visible {
+  outline: 2px solid var(--annotation-color);
+  outline-offset: 1px;
 }
 
 .code-annotation-card:hover,
@@ -551,10 +620,7 @@ button.flow-path-chip:hover {
   outline: none;
 }
 
-/*
- * 畳んだカードは番号と見出しだけの 1 行。高さは番号バッジ 22px と上下の余白 5px ずつ、
- * カードの枠 2px の和で、codeAnnotations.ts の COLLAPSED_ANNOTATION_CARD_HEIGHT と揃える。
- */
+/* 畳んだカードは番号と見出しだけの 1 行になる。 */
 .code-annotation-card.is-collapsed {
   align-items: center;
   padding-top: 5px;
@@ -570,18 +636,11 @@ button.flow-path-chip:hover {
   align-items: center;
 }
 
+/* 選択は開閉と切り離し、いま読んでいる 1 枚を縁で示すことにだけ使う。 */
 .code-annotation-card.is-selected {
-  padding: 10px 10px 12px 12px;
   border-color: color-mix(in srgb, var(--annotation-color) 72%, #454b5c);
-  background: linear-gradient(145deg, #202438, #131824);
   box-shadow: 0 0 18px color-mix(in srgb, var(--annotation-color) 12%, transparent);
   color: #c6cad4;
-}
-
-/* 行間に収まるので、本文は切り詰めずそのまま出す（zone の高さが追従する）。 */
-.code-annotation-card.is-selected .code-annotation-body {
-  display: block;
-  font-size: var(--fs-body);
 }
 
 .code-annotation-number {
@@ -604,7 +663,7 @@ button.flow-path-chip:hover {
 /* 番号と見出しの button。カード全体ではなくここが選択とキーボード操作を受ける。 */
 .code-annotation-select {
   display: grid;
-  grid-column: 1 / -1;
+  grid-column: 1;
   grid-template-columns: 30px minmax(0, 1fr);
   align-items: start;
   column-gap: 10px;
@@ -637,16 +696,13 @@ button.flow-path-chip:hover {
   -webkit-line-clamp: 2;
 }
 
+/* 行間に収まるので、本文は切り詰めずそのまま出す（zone の高さが追従する）。 */
 .code-annotation-body {
-  display: -webkit-box;
-  grid-column: 2;
+  grid-column: 1 / -1;
   min-width: 0;
   color: #959cab;
-  font-size: var(--fs-caption);
+  font-size: var(--fs-body);
   line-height: 1.55;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
 }
 
 .code-annotation-close {

@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { editor } from "monaco-editor";
 import type { CodeAnnotation } from "../../review";
-import { COLLAPSED_ANNOTATION_CARD_HEIGHT } from "../codeAnnotations";
+import { ANNOTATION_CARD_HEIGHT } from "../codeAnnotations";
 import { focusRange } from "../decorations";
 
 export type AnnotationViewZone = {
@@ -72,8 +72,9 @@ export function useAnnotationViewZones({
         const domNode = document.createElement("div");
         domNode.className = "code-annotation-zone";
         const zone: editor.IViewZone = {
-          afterLineNumber: range.endLineNumber,
-          heightInPx: COLLAPSED_ANNOTATION_CARD_HEIGHT,
+          // カードはブロックの上に出す。0 は「先頭行の前」の意味になる。
+          afterLineNumber: Math.max(range.startLineNumber - 1, 0),
+          heightInPx: ANNOTATION_CARD_HEIGHT,
           domNode,
         };
         const zoneId = accessor.addZone(zone);

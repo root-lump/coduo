@@ -41,7 +41,7 @@ const annotationAt = (id: string, startLine: number, endLine: number) =>
   }) satisfies CodeAnnotation;
 
 describe("useAnnotationViewZones", () => {
-  it("注釈ごとに zone を張り、ブロックの終了行の直後に置く", () => {
+  it("注釈ごとに zone を張り、ブロックの開始行の直前に置く", () => {
     const { instance, zones } = fakeEditor();
     const annotations = [annotationAt("a-1", 3, 7), annotationAt("a-2", 20, 20)];
 
@@ -53,8 +53,9 @@ describe("useAnnotationViewZones", () => {
       }),
     );
 
+    // カードはブロックの上に出るので、開始行の 1 つ前に置く。
     expect([...zones.values()].map((zone) => zone.afterLineNumber)).toEqual([
-      7, 20,
+      2, 19,
     ]);
     expect(result.current.zones.map((zone) => zone.annotationId)).toEqual([
       "a-1",
@@ -65,6 +66,20 @@ describe("useAnnotationViewZones", () => {
         zone.domNode.classList.contains("code-annotation-zone"),
       ),
     ).toBe(true);
+  });
+
+  it("1 行目に付いた注釈は先頭行の前（0）に置く", () => {
+    const { instance, zones } = fakeEditor();
+
+    renderHook(() =>
+      useAnnotationViewZones({
+        editorInstance: instance,
+        annotations: [annotationAt("a-1", 1, 3)],
+        mountToken: 1,
+      }),
+    );
+
+    expect([...zones.values()][0].afterLineNumber).toBe(0);
   });
 
   it("注釈が入れ替わったら古い zone を消して張り直す", () => {
@@ -83,7 +98,7 @@ describe("useAnnotationViewZones", () => {
     rerender({ annotations: [annotationAt("b-1", 40, 42)] });
 
     expect(zones.size).toBe(1);
-    expect([...zones.values()][0].afterLineNumber).toBe(42);
+    expect([...zones.values()][0].afterLineNumber).toBe(39);
   });
 
   it("アンマウントで zone を消す", () => {

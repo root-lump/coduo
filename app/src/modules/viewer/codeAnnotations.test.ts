@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { annotationAtPosition, containsCodePosition } from "./codeAnnotations";
+import {
+  annotationAtPosition,
+  annotationChangeKind,
+  containsCodePosition,
+} from "./codeAnnotations";
 
 describe("code annotations", () => {
   it("uses columns when available and whole lines otherwise", () => {
@@ -36,5 +40,31 @@ describe("code annotations", () => {
       20,
     );
     expect(annotation?.id).toBe("a");
+  });
+});
+
+describe("annotationChangeKind", () => {
+  const annotation = {
+    id: "a",
+    label: "A",
+    explanation: "A",
+    target: { file: "a.ts", range: { startLine: 5, endLine: 9 } },
+  };
+
+  it("ブロックの先頭行の変更種別を返す", () => {
+    expect(
+      annotationChangeKind(annotation, [
+        { line: 4, kind: "deleted" },
+        { line: 5, kind: "added" },
+        { line: 9, kind: "modified" },
+      ]),
+    ).toBe("added");
+  });
+
+  it("先頭行が変更行でなければ undefined", () => {
+    expect(annotationChangeKind(annotation, [{ line: 9, kind: "added" }])).toBe(
+      undefined,
+    );
+    expect(annotationChangeKind(annotation, [])).toBe(undefined);
   });
 });

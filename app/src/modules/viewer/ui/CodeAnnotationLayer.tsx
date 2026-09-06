@@ -1,10 +1,11 @@
 // 注釈カードの描画。カードは Monaco の view zone（行間の空き）へ portal で入れる。
 // 出す・出さないの判定（shouldRenderCodeAnnotations）は呼び出し側が行う。
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CodeAnnotation } from "../../review";
 import { TourMarkdown } from "../../review";
-import type { FileReference } from "../../workspace";
+import type { ChangedLine, FileReference } from "../../workspace";
+import { annotationChangeKind } from "../codeAnnotations";
 import type { AnnotationViewZone } from "./useAnnotationViewZones";
 
 type AnnotationRenderState = {
@@ -29,6 +30,8 @@ type CodeAnnotationLayerProps = {
   annotations: CodeAnnotation[];
   /** 注釈ごとの view zone。中身をここへ描く。 */
   zones: AnnotationViewZone[];
+  /** カードの背景をブロックの先頭行に合わせるための変更行。 */
+  changedLines: ChangedLine[];
   /** カードの実測高さを zone へ返す。 */
   onMeasure(annotationId: string, height: number): void;
   onClose(): void;
@@ -41,6 +44,7 @@ type CodeAnnotationLayerProps = {
 export function CodeAnnotationLayer({
   annotations,
   zones,
+  changedLines,
   onMeasure,
   onClose,
   onSelect,
@@ -48,9 +52,25 @@ export function CodeAnnotationLayer({
   onOpenFileReference,
   selectedId,
 }: CodeAnnotationLayerProps) {
+  // 既定はすべて開いた状態。畳むのは読み手が明示したときだけなので、
+  // 注釈が入れ替わったら（ステップの移動、ファイルの切り替え）空に戻す。
+  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const annotationKey = annotations.map((annotation) => annotation.id).join("\n");
+  useEffect(() => {
+    setCollapsedIds(new Set());
+  }, [annotationKey]);
+
   const zoneByAnnotationId = new Map(
     zones.map((zone) => [zone.annotationId, zone]),
   );
+  const toggleCollapsed = (id: string) =>
+    setCollapsedIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
   return (
     <>
@@ -71,6 +91,9 @@ export function CodeAnnotationLayer({
             annotation={annotation}
             index={index}
             selected={annotation.id === selectedId}
+            collapsed={collapsedIds.has(annotation.id)}
+            changeKind={annotationChangeKind(annotation, changedLines)}
+            onToggleCollapsed={toggleCollapsed}
             onMeasure={onMeasure}
             onSelect={onSelect}
             resolveFileReference={resolveFileReference}
@@ -88,6 +111,10 @@ type AnnotationCardProps = {
   annotation: CodeAnnotation;
   index: number;
   selected: boolean;
+  collapsed: boolean;
+  /** ブロックの先頭行の変更種別。カードの背景を行と揃えるために使う。 */
+  changeKind?: ChangedLine["kind"];
+  onToggleCollapsed(id: string): void;
   onMeasure(annotationId: string, height: number): void;
   onSelect(id: string): void;
   resolveFileReference(text: string): FileReference | undefined;
@@ -98,6 +125,9 @@ function AnnotationCard({
   annotation,
   index,
   selected,
+  collapsed,
+  changeKind,
+  onToggleCollapsed,
   onMeasure,
   onSelect,
   resolveFileReference,
@@ -130,14 +160,24 @@ function AnnotationCard({
       observer.disconnect();
       if (frame !== undefined) window.cancelAnimationFrame(frame);
     };
-  }, [annotation.id, selected]);
+  }, [annotation.id, collapsed]);
+
+  const className = [
+    "code-annotation-card",
+    `annotation-color-${(index % 4) + 1}`,
+    selected ? "is-selected" : "",
+    collapsed ? "is-collapsed" : "",
+    changeKind ? `is-${changeKind}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   // 本文の Markdown にファイルリンク（button）が入るため、カード全体を button に
   // せず、番号と見出しの button で選択とキーボード操作を受ける。カード本体の click
-  // は補助で、リンク側は stopPropagation で切り分ける。
+  // は補助で、リンク側と折り畳みは stopPropagation で切り分ける。
   return (
     <div
-      className={`code-annotation-card annotation-color-${(index % 4) + 1}${selected ? " is-selected" : " is-collapsed"}`}
+      className={className}
       data-annotation-id={annotation.id}
       data-testid="code-annotation-card"
       onClick={() => onSelect(annotation.id)}
@@ -156,7 +196,20 @@ function AnnotationCard({
         <span className="code-annotation-number">{index + 1}</span>
         <strong>{annotation.label}</strong>
       </button>
-      {selected && (
+      <button
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? "本文を開く" : "本文を畳む"}
+        className="code-annotation-toggle"
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleCollapsed(annotation.id);
+        }}
+        title={collapsed ? "本文を開く" : "本文を畳む"}
+        type="button"
+      >
+        {collapsed ? "▸" : "▾"}
+      </button>
+      {!collapsed && (
         <TourMarkdown
           className="code-annotation-body"
           text={annotation.explanation}

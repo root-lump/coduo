@@ -193,6 +193,7 @@ export function CodeViewer({
     <CodeAnnotationLayer
       annotations={annotations}
       zones={zones}
+      changedLines={changedLines}
       onMeasure={setZoneHeight}
       selectedId={selectedAnnotationId}
       onSelect={(id) => selectAnnotation(id, true)}
