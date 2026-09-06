@@ -516,16 +516,14 @@ button.flow-path-chip:hover {
 }
 
 /*
- * view zone の行。すぐ下の行（注釈ブロックの先頭行）と同じ色をこの行にも敷く。
+ * view zone の行。すぐ下の行（注釈ブロックの先頭行）の差分の色をこの行にも敷く。
  * 行に付いた色の帯がカードの位置で途切れると、その行だけ色が抜けて見える。
  * 本文側（domNode）と行番号側（marginDomNode）の両方に敷かないと、カードの左が
- * 塗り残しになる。手前から注釈の色、変更行の色、の順に重ねる。
+ * 塗り残しになる。注釈の色は敷かない（差分の色より濃く、緑や赤が負けるため）。
  */
 .code-annotation-zone,
 .code-annotation-zone-margin {
-  background-image:
-    linear-gradient(var(--annotation-tint, transparent), var(--annotation-tint, transparent)),
-    linear-gradient(var(--change-tint, transparent), var(--change-tint, transparent));
+  background-color: var(--change-tint, transparent);
 }
 
 .code-annotation-zone {
@@ -536,24 +534,6 @@ button.flow-path-chip:hover {
   display: flex;
   align-items: flex-start;
   padding: 3px 12px 3px 0;
-}
-
-/* 行側の .code-annotation-range.annotation-color-N と同じ値を使う。 */
-.code-annotation-zone.annotation-color-1,
-.code-annotation-zone-margin.annotation-color-1 {
-  --annotation-tint: #8b7cf622;
-}
-.code-annotation-zone.annotation-color-2,
-.code-annotation-zone-margin.annotation-color-2 {
-  --annotation-tint: #3cc8b41d;
-}
-.code-annotation-zone.annotation-color-3,
-.code-annotation-zone-margin.annotation-color-3 {
-  --annotation-tint: #ed9b5f1d;
-}
-.code-annotation-zone.annotation-color-4,
-.code-annotation-zone-margin.annotation-color-4 {
-  --annotation-tint: #df6fa81d;
 }
 
 /* コードモードの変更行の色（.git-line-* と同じ値）。 */

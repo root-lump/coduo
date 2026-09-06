@@ -158,7 +158,7 @@ describe("useAnnotationViewZones", () => {
     expect(layouts).toEqual([]);
   });
 
-  it("行の色のクラスを本文側と余白側の両方に付ける", () => {
+  it("差分の色のクラスを本文側と余白側の両方に付ける", () => {
     const { instance, zones } = fakeEditor();
 
     renderHook(() =>
@@ -171,16 +171,12 @@ describe("useAnnotationViewZones", () => {
     );
 
     const [first, second] = [...zones.values()];
-    expect(first.domNode.className).toBe(
-      "code-annotation-zone annotation-color-1 is-added",
-    );
+    expect(first.domNode.className).toBe("code-annotation-zone is-added");
     expect(first.marginDomNode?.className).toBe(
-      "code-annotation-zone-margin annotation-color-1 is-added",
+      "code-annotation-zone-margin is-added",
     );
-    // 先頭行が変更行でなければ変更の色は付けない。
-    expect(second.domNode.className).toBe(
-      "code-annotation-zone annotation-color-2",
-    );
+    // 先頭行が変更行でなければ色は付けない。
+    expect(second.domNode.className).toBe("code-annotation-zone");
   });
 
   it("エディタが無ければ zone を作らない", () => {

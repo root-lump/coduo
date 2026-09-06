@@ -34,19 +34,19 @@ type UseAnnotationViewZonesArgs = {
 };
 
 /**
- * zone の行に付ける色のクラス。行の色はすぐ下の行（注釈ブロックの先頭行）に
- * 合わせるので、注釈の配色と変更行の種別から決まる。カードではなく行に付けるのは、
- * 行に付いた色の帯がカードの左右で途切れると、その行だけ色が抜けて見えるため。
+ * zone の行に付ける色のクラス。行の色はすぐ下の行（注釈ブロックの先頭行）の
+ * 差分の色に合わせる。カードではなく行に付けるのは、行に付いた色の帯がカードの
+ * 左右で途切れると、その行だけ色が抜けて見えるため。
+ *
+ * 注釈の色は敷かない。注釈の色（alpha 0.13）は差分の色（0.08）より濃く、
+ * 重ねると差分の緑や赤が負けて見えなくなる。注釈の色はカードの枠と番号で示す。
  */
 function zoneTintClass(
   annotation: CodeAnnotation,
-  index: number,
   changedLines: ChangedLine[],
 ): string {
   const kind = annotationChangeKind(annotation, changedLines);
-  return [`annotation-color-${(index % 4) + 1}`, kind ? `is-${kind}` : ""]
-    .filter(Boolean)
-    .join(" ");
+  return kind ? `is-${kind}` : "";
 }
 
 /**
@@ -84,9 +84,7 @@ export function useAnnotationViewZones({
   const changedLinesRef = useRef(changedLines);
   changedLinesRef.current = changedLines;
   const signature = `${zoneSignature(annotations)}\n${annotations
-    .map((annotation, index) =>
-      zoneTintClass(annotation, index, changedLines),
-    )
+    .map((annotation) => zoneTintClass(annotation, changedLines))
     .join("\n")}`;
 
   useEffect(() => {
@@ -98,16 +96,16 @@ export function useAnnotationViewZones({
     const lineCount = model.getLineCount();
     const created: AnnotationViewZone[] = [];
     editorInstance.changeViewZones((accessor) => {
-      annotationsRef.current.forEach((annotation, index) => {
+      annotationsRef.current.forEach((annotation) => {
         const range = focusRange(annotation.target, lineCount);
         if (!range) return;
-        const tint = zoneTintClass(annotation, index, changedLinesRef.current);
+        const tint = zoneTintClass(annotation, changedLinesRef.current);
         const domNode = document.createElement("div");
-        domNode.className = `code-annotation-zone ${tint}`;
+        domNode.className = `code-annotation-zone ${tint}`.trim();
         // 行番号側（余白）は別の DOM になる。渡さないとそこだけ色が付かず、
         // 行の色の帯がカードの左で途切れる。
         const marginDomNode = document.createElement("div");
-        marginDomNode.className = `code-annotation-zone-margin ${tint}`;
+        marginDomNode.className = `code-annotation-zone-margin ${tint}`.trim();
         const zone: editor.IViewZone = {
           // カードはブロックの上に出す。0 は「先頭行の前」の意味になる。
           afterLineNumber: Math.max(range.startLineNumber - 1, 0),
