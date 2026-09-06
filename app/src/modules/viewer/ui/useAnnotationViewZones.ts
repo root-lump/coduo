@@ -10,6 +10,9 @@ import type { CodeAnnotation } from "../../review";
 import { ANNOTATION_CARD_HEIGHT } from "../codeAnnotations";
 import { focusRange } from "../decorations";
 
+/** 差分エディタが削除行の zone に使う既定値（10000）より後ろに置くための順序。 */
+const ANNOTATION_ZONE_ORDINAL = 20000;
+
 export type AnnotationViewZone = {
   annotationId: string;
   domNode: HTMLElement;
@@ -74,6 +77,10 @@ export function useAnnotationViewZones({
         const zone: editor.IViewZone = {
           // カードはブロックの上に出す。0 は「先頭行の前」の意味になる。
           afterLineNumber: Math.max(range.startLineNumber - 1, 0),
+          // 同じ行に複数の zone があるときは ordinal の小さい順に並ぶ。差分エディタは
+          // 削除された行を同じ afterLineNumber へ既定値（10000）で挿すので、それより
+          // 大きい値にして、カードが削除側ではなく変更後の行の直上に来るようにする。
+          ordinal: ANNOTATION_ZONE_ORDINAL,
           heightInPx: ANNOTATION_CARD_HEIGHT,
           domNode,
         };

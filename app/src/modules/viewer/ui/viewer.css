@@ -524,6 +524,48 @@ button.flow-path-chip:hover {
   display: flex;
   align-items: flex-start;
   padding: 3px 12px 3px 0;
+  /*
+   * すぐ下の行（注釈ブロックの先頭行）と同じ色をこの行にも敷く。カードだけでなく
+   * 行の幅いっぱいに敷くのは、行に付いた色の帯がカードの位置で途切れると、
+   * 色が突然消えて見えるため。手前から注釈の色、変更行の色、の順に重ねる。
+   */
+  background-image:
+    linear-gradient(var(--annotation-tint, transparent), var(--annotation-tint, transparent)),
+    linear-gradient(var(--change-tint, transparent), var(--change-tint, transparent));
+}
+
+/* 色はカードのクラスから決まるので、行側はカードを見て引く。 */
+.code-annotation-zone:has(.annotation-color-1) {
+  --annotation-tint: #8b7cf622;
+}
+.code-annotation-zone:has(.annotation-color-2) {
+  --annotation-tint: #3cc8b41d;
+}
+.code-annotation-zone:has(.annotation-color-3) {
+  --annotation-tint: #ed9b5f1d;
+}
+.code-annotation-zone:has(.annotation-color-4) {
+  --annotation-tint: #df6fa81d;
+}
+
+/* コードモードの変更行の色（.git-line-* と同じ値）。 */
+.code-annotation-zone:has(.is-added) {
+  --change-tint: #3fb9500b;
+}
+.code-annotation-zone:has(.is-modified) {
+  --change-tint: #d2992209;
+}
+.code-annotation-zone:has(.is-deleted) {
+  --change-tint: #ef6a7109;
+}
+
+/* 差分モードでは Monaco が行を塗るので、その値に合わせる。 */
+.modified-in-monaco-diff-editor .code-annotation-zone:has(.is-added),
+.modified-in-monaco-diff-editor .code-annotation-zone:has(.is-modified) {
+  --change-tint: var(--vscode-diffEditor-insertedLineBackground);
+}
+.modified-in-monaco-diff-editor .code-annotation-zone:has(.is-deleted) {
+  --change-tint: var(--vscode-diffEditor-removedLineBackground);
 }
 
 .code-annotation-card {
@@ -538,54 +580,12 @@ button.flow-path-chip:hover {
   border: 1px solid #343a4a;
   border-left: 2px solid var(--annotation-color);
   border-radius: 9px;
-  /*
-   * 背景は、カードのすぐ下の行（注釈ブロックの先頭行）の色を重ねて作る。
-   * 行に付いた色がカードの位置で途切れると、色の帯が突然消えて見える。
-   * 手前から順に、注釈の色（--annotation-tint）、変更行の色（--change-tint）、
-   * 土台の順に敷く。tint は既定では透明で、該当するクラスが値を入れる。
-   */
-  background-color: #12161f;
-  background-image:
-    linear-gradient(var(--annotation-tint, transparent), var(--annotation-tint, transparent)),
-    linear-gradient(var(--change-tint, transparent), var(--change-tint, transparent));
+  /* 塗りは持たず、行に敷いた色をそのまま透かす。枠だけでカードとして見せる。 */
+  background: transparent;
   color: #8c94a4;
   text-align: left;
   cursor: pointer;
   transition: border-color 140ms ease;
-}
-
-/* 行側の .code-annotation-range.annotation-color-N と同じ値を使う。 */
-.code-annotation-card.annotation-color-1 {
-  --annotation-tint: #8b7cf622;
-}
-.code-annotation-card.annotation-color-2 {
-  --annotation-tint: #3cc8b41d;
-}
-.code-annotation-card.annotation-color-3 {
-  --annotation-tint: #ed9b5f1d;
-}
-.code-annotation-card.annotation-color-4 {
-  --annotation-tint: #df6fa81d;
-}
-
-/* コードモードの変更行の色（.git-line-* と同じ値）。 */
-.code-annotation-card.is-added {
-  --change-tint: #3fb9500b;
-}
-.code-annotation-card.is-modified {
-  --change-tint: #d2992209;
-}
-.code-annotation-card.is-deleted {
-  --change-tint: #ef6a7109;
-}
-
-/* 差分モードでは Monaco が行を塗るので、その値に合わせる。 */
-.modified-in-monaco-diff-editor .code-annotation-card.is-added,
-.modified-in-monaco-diff-editor .code-annotation-card.is-modified {
-  --change-tint: var(--vscode-diffEditor-insertedLineBackground);
-}
-.modified-in-monaco-diff-editor .code-annotation-card.is-deleted {
-  --change-tint: var(--vscode-diffEditor-removedLineBackground);
 }
 
 /* 本文を畳むボタン。見出しの右端に置く。 */
@@ -638,8 +638,8 @@ button.flow-path-chip:hover {
 
 /* 選択は開閉と切り離し、いま読んでいる 1 枚を縁で示すことにだけ使う。 */
 .code-annotation-card.is-selected {
-  border-color: color-mix(in srgb, var(--annotation-color) 72%, #454b5c);
-  box-shadow: 0 0 18px color-mix(in srgb, var(--annotation-color) 12%, transparent);
+  border-color: var(--annotation-color);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--annotation-color) 35%, transparent);
   color: #c6cad4;
 }
 
@@ -700,7 +700,7 @@ button.flow-path-chip:hover {
 .code-annotation-body {
   grid-column: 1 / -1;
   min-width: 0;
-  color: #959cab;
+  color: #b3bac7;
   font-size: var(--fs-body);
   line-height: 1.55;
 }
