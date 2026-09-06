@@ -42,40 +42,33 @@ export function annotationAtPosition(
  */
 export const ANNOTATION_CARD_HEIGHT = 137;
 export const ANNOTATION_CARD_GAP = 13;
-export const ANNOTATION_RAIL_MARGIN = 18;
-/** 選択中のカードの初期見積もり。viewer.css の .is-selected の max-height と揃える。 */
-export const EXPANDED_ANNOTATION_CARD_HEIGHT = 330;
-/** 畳んだカードの見積もり。viewer.css の .is-collapsed の max-height と揃える。 */
-export const COLLAPSED_ANNOTATION_CARD_HEIGHT = 46;
+/** アンカー（ブロックの下端）とカード上端の間隔。 */
+export const ANNOTATION_CARD_OFFSET = 6;
 
 export type AnnotationLayoutOptions = {
   /** カードの実測高さ。実測が入るまでは見積もりを返す。 */
   heightOf(id: string): number;
   gap?: number;
-  margin?: number;
+  offset?: number;
 };
 
 /**
- * カードはアンカーの行の高さに合わせて置き、順序と間隔だけを保つ。表示領域の下端に
- * 押し戻すことはしない（押し戻すと、低いペインではスクロールに追従しなくなる）。
- * 下にはみ出した分はレール側のスクロールで見せる。
+ * カードは注釈のブロックの直下に置き、順序と間隔だけを保つ。表示領域に押し戻すことは
+ * しない（押し戻すと、どのブロックに付いた注釈かが分からなくなる）。
  */
 export function layoutAnnotationCards(
   anchors: AnnotationAnchor[],
   {
     heightOf,
     gap = ANNOTATION_CARD_GAP,
-    margin = ANNOTATION_RAIL_MARGIN,
+    offset = ANNOTATION_CARD_OFFSET,
   }: AnnotationLayoutOptions,
 ): AnnotationCardPlacement[] {
-  const placements = anchors.map((anchor) => {
-    const cardHeight = heightOf(anchor.id);
-    return {
-      ...anchor,
-      cardHeight,
-      cardTop: Math.max(anchor.top - cardHeight / 2, margin),
-    };
-  });
+  const placements = anchors.map((anchor) => ({
+    ...anchor,
+    cardHeight: heightOf(anchor.id),
+    cardTop: anchor.top + offset,
+  }));
   for (let index = 1; index < placements.length; index += 1) {
     const previous = placements[index - 1];
     placements[index].cardTop = Math.max(
@@ -86,75 +79,16 @@ export function layoutAnnotationCards(
   return placements;
 }
 
-export function annotationRailHeight(
-  placements: AnnotationCardPlacement[],
-  viewportHeight: number,
-  margin = ANNOTATION_RAIL_MARGIN,
-): number {
-  const last = placements.at(-1);
-  if (!last) return viewportHeight;
-  return Math.max(viewportHeight, last.cardTop + last.cardHeight + margin);
-}
-
-export type CollapseOptions = {
-  cardHeight?: number;
-  collapsedHeight?: number;
-  expandedHeight?: number;
-  gap?: number;
-  margin?: number;
-};
-
 /**
- * 畳むカードの id。全部を通常の高さで積んで表示域に収まるなら畳まず、収まらないときだけ
- * アンカーが画面外のカードを上から順に、収まるまで畳む。
- *
- * 高さに実測ではなく見積もりの定数を使うのは、判断が振動しないようにするため。畳んだカードの
- * 「畳まないときの高さ」は測れないので、実測で判断すると畳む・畳まないを往復しうる。
- */
-export function collapsedAnnotationIds(
-  anchors: AnnotationAnchor[],
-  viewportHeight: number,
-  selectedId?: string,
-  {
-    cardHeight = ANNOTATION_CARD_HEIGHT,
-    collapsedHeight = COLLAPSED_ANNOTATION_CARD_HEIGHT,
-    expandedHeight = EXPANDED_ANNOTATION_CARD_HEIGHT,
-    gap = ANNOTATION_CARD_GAP,
-    margin = ANNOTATION_RAIL_MARGIN,
-  }: CollapseOptions = {},
-): ReadonlySet<string> {
-  const candidates = anchors
-    .filter((anchor) => !anchor.visible)
-    .map((anchor) => anchor.id);
-  const fits = (collapsed: ReadonlySet<string>) => {
-    const placements = layoutAnnotationCards(anchors, {
-      heightOf: (id) =>
-        collapsed.has(id)
-          ? collapsedHeight
-          : id === selectedId
-            ? expandedHeight
-            : cardHeight,
-      gap,
-      margin,
-    });
-    return annotationRailHeight(placements, viewportHeight, margin) <= viewportHeight;
-  };
-
-  for (let count = 0; count < candidates.length; count += 1) {
-    const collapsed = new Set(candidates.slice(0, count));
-    if (fits(collapsed)) return collapsed;
-  }
-  return new Set(candidates);
-}
-
-/**
- * 注釈のアンカー（コード側の線の起点）。行が可視範囲に無いときは表示領域の上端か
- * 下端に寄せ、visible を false にする（線は引かず、カードは画面外の見た目になる）。
+ * 注釈のアンカー（カードを吊るすブロックの下端）。ブロックの終了行が可視範囲に無い
+ * ときは visible を false にし、カードは描画しない（重ねる表示では画面外のカードを
+ * 寄せる先が無く、行と対応しない位置にカードだけが残ってしまう）。
  * Monaco の getScrolledVisiblePosition は画面外の行にも非 null の位置を返すので、
  * 可視かどうかは別に渡す visibleRanges で判定する。
  */
 export function annotationAnchor(args: {
   id: string;
+  /** ブロックの終了行。カードはこの行の下に出る。 */
   lineNumber: number;
   visibleRanges: readonly { startLineNumber: number; endLineNumber: number }[];
   position: { top: number; height: number } | null;
@@ -168,14 +102,11 @@ export function annotationAnchor(args: {
         lineNumber >= range.startLineNumber &&
         lineNumber <= range.endLineNumber,
     );
-  if (visible && position) {
-    const center = position.top + position.height / 2;
-    return { id, top: Math.min(Math.max(center, 0), viewportHeight), visible: true };
-  }
-  const firstVisibleLine = visibleRanges[0]?.startLineNumber ?? 1;
+  if (!visible || !position) return { id, top: 0, visible: false };
+  const bottom = position.top + position.height;
   return {
     id,
-    top: lineNumber < firstVisibleLine ? 4 : viewportHeight - 4,
-    visible: false,
+    top: Math.min(Math.max(bottom, 0), viewportHeight),
+    visible: true,
   };
 }

@@ -5,7 +5,7 @@
 // コードナビゲーションの登録は Monaco 全体への単一登録なので、ここでは行わない
 // （navigationFiles を空で渡すと登録されない。登録はグローバルなので上段でも効く）。
 import Editor from "@monaco-editor/react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { editor } from "monaco-editor";
 import type {
   CodeAnnotation,
@@ -18,10 +18,9 @@ import type { ChangedLine, FileContent, FileReference } from "../../workspace";
 import { languageFromPath } from "../language";
 import { CODUO_THEME } from "../monacoEnvironment";
 import {
-  CodeAnnotationRail,
+  CodeAnnotationLayer,
   shouldRenderCodeAnnotations,
-  type AnnotationRail,
-} from "./CodeAnnotationRail";
+} from "./CodeAnnotationLayer";
 import { SHARED_EDITOR_OPTIONS } from "./editorOptions";
 import { useMonacoViewer } from "./useMonacoViewer";
 
@@ -43,8 +42,6 @@ type FlowOriginPaneProps = {
   changedLines: ChangedLine[];
   focusToken: number;
   onOpenJump(jump: CodeJump): void;
-  /** 注釈レールの幅。下段と共有する。 */
-  rail: AnnotationRail;
   resolveFileReference(text: string): FileReference | undefined;
   onOpenFileReference(reference: FileReference): void;
   /** 連結線が座標を引くためにエディタ実体を渡す。unmount 時は undefined。 */
@@ -61,7 +58,6 @@ export function FlowOriginPane({
   changedLines,
   focusToken,
   onOpenJump,
-  rail,
   resolveFileReference,
   onOpenFileReference,
   onEditor,
@@ -111,20 +107,9 @@ export function FlowOriginPane({
     focusToken,
     hasViewport: viewport.height > 0 && viewport.width > 0,
   });
-  const className = [
-    "code-viewer flow-pane flow-pane--origin",
-    showAnnotations ? "has-code-annotations" : "",
-    showAnnotations && rail.isNarrow ? "is-narrow-annotations" : "",
-    rail.isResizing ? "is-resizing" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const style = {
-    "--annotation-rail-width": `${rail.width}px`,
-  } as CSSProperties;
 
   return (
-    <div className={className} style={style}>
+    <div className="code-viewer flow-pane flow-pane--origin">
       <div className="code-editor-surface">
         <Editor
           height="100%"
@@ -150,14 +135,13 @@ export function FlowOriginPane({
         />
       </div>
       {showAnnotations && (
-        <CodeAnnotationRail
+        <CodeAnnotationLayer
           anchors={anchors}
           annotations={annotations}
-          viewport={viewport}
+          contentLeft={viewport.contentLeft}
           selectedId={selectedAnnotationId}
           onSelect={(id) => selectAnnotation(id, true)}
           onClose={() => setDismissedFocusToken(focusToken)}
-          onResizeStart={rail.startResize}
           resolveFileReference={resolveFileReference}
           onOpenFileReference={onOpenFileReference}
         />

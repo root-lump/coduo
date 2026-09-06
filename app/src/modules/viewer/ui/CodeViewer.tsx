@@ -2,7 +2,7 @@
 // ここでは placeholder / エディタ / 注釈レイヤの表示だけを組み立てる。
 // ジャンプを開いているときは、参照元（FlowOriginPane）を上段に足して 2 段にする。
 import Editor, { DiffEditor } from "@monaco-editor/react";
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import type { editor } from "monaco-editor";
 import type {
   CodeAnnotation,
@@ -20,14 +20,13 @@ import { languageFromPath } from "../language";
 import { unavailableMessageFor } from "../unavailableMessage";
 import { CODUO_THEME } from "../monacoEnvironment";
 import {
-  CodeAnnotationRail,
+  CodeAnnotationLayer,
   shouldRenderCodeAnnotations,
-} from "./CodeAnnotationRail";
+} from "./CodeAnnotationLayer";
 import { SHARED_EDITOR_OPTIONS } from "./editorOptions";
 import { FlowConnector } from "./FlowConnector";
 import { FlowOriginPane } from "./FlowOriginPane";
 import { JumpPathBar } from "./JumpPathBar";
-import { useAnnotationRailSizing } from "./useAnnotationRailSizing";
 import { useFlowConnector } from "./useFlowConnector";
 import { useMonacoViewer } from "./useMonacoViewer";
 
@@ -106,17 +105,12 @@ export function CodeViewer({
   onJumpBack,
 }: CodeViewerProps) {
   const [dismissedFocusToken, setDismissedFocusToken] = useState<number>();
-  // 注釈レールの幅とレイアウトの基準。分割表示では下段のペインを指す。
-  const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(
-    null,
-  );
   const [shellElement, setShellElement] = useState<HTMLDivElement | null>(
     null,
   );
   const [originEditor, setOriginEditor] = useState<
     editor.ICodeEditor | undefined
   >(undefined);
-  const rail = useAnnotationRailSizing(viewerElement);
   const {
     anchors,
     editorInstance,
@@ -185,24 +179,17 @@ export function CodeViewer({
   const viewerClassName = [
     "code-viewer",
     jumpView ? "flow-pane flow-pane--target" : "",
-    showAnnotations ? "has-code-annotations" : "",
-    showAnnotations && rail.isNarrow ? "is-narrow-annotations" : "",
-    rail.isResizing ? "is-resizing" : "",
   ]
     .filter(Boolean)
     .join(" ");
-  const viewerStyle = {
-    "--annotation-rail-width": `${rail.width}px`,
-  } as CSSProperties;
   const annotationLayer = showAnnotations ? (
-    <CodeAnnotationRail
+    <CodeAnnotationLayer
       anchors={anchors}
       annotations={annotations}
-      viewport={viewport}
+      contentLeft={viewport.contentLeft}
       selectedId={selectedAnnotationId}
       onSelect={(id) => selectAnnotation(id, true)}
       onClose={() => setDismissedFocusToken(focusToken)}
-      onResizeStart={rail.startResize}
       resolveFileReference={resolveFileReference}
       onOpenFileReference={onOpenFileReference}
     />
@@ -271,12 +258,7 @@ export function CodeViewer({
   // 下段（本体のエディタ）は 1 面でも 2 段でも同じ key の同じ要素にして、
   // ジャンプの開閉で Monaco を作り直さない（位置が変わると React は要素を捨てる）。
   const targetPane = (
-    <div
-      key="target"
-      className={viewerClassName}
-      ref={setViewerElement}
-      style={viewerStyle}
-    >
+    <div key="target" className={viewerClassName}>
       <div className="code-editor-surface">{editorElement}</div>
       {annotationLayer}
     </div>
@@ -321,7 +303,6 @@ export function CodeViewer({
         changedLines={jumpView.originChangedLines}
         focusToken={focusToken}
         onOpenJump={onOpenOriginJump}
-        rail={rail}
         resolveFileReference={resolveFileReference}
         onOpenFileReference={onOpenFileReference}
         onEditor={setOriginEditor}

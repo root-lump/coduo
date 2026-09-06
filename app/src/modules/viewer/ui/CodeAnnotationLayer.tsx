@@ -1,67 +1,68 @@
-import { useState, type CSSProperties, type UIEvent } from "react";
+// 注釈カードのレイヤ。カードは対象ブロックの直下へ、コードに重ねて置く。
+// 出す・出さないの判定（shouldRenderCodeAnnotations）は呼び出し側が行う。
+import type { CSSProperties } from "react";
 import type { CodeAnnotation } from "../../review";
 import { TourMarkdown } from "../../review";
 import type { FileReference } from "../../workspace";
 import type { AnnotationAnchor } from "../codeAnnotations";
 import {
-  annotationRailHeight,
-  collapsedAnnotationIds,
   layoutAnnotationCards,
   ANNOTATION_CARD_HEIGHT,
-  ANNOTATION_RAIL_MARGIN,
-  COLLAPSED_ANNOTATION_CARD_HEIGHT,
-  EXPANDED_ANNOTATION_CARD_HEIGHT,
 } from "../codeAnnotations";
 import { useAnnotationCardHeights } from "./useAnnotationCardHeights";
+
+type AnnotationRenderState = {
+  annotationCount: number;
+  dismissedFocusToken?: number;
+  focusToken: number;
+  hasViewport: boolean;
+};
+
+export function shouldRenderCodeAnnotations({
+  annotationCount,
+  dismissedFocusToken,
+  focusToken,
+  hasViewport,
+}: AnnotationRenderState): boolean {
+  return (
+    annotationCount > 0 && hasViewport && dismissedFocusToken !== focusToken
+  );
+}
 
 type CodeAnnotationLayerProps = {
   anchors: AnnotationAnchor[];
   annotations: CodeAnnotation[];
-  height: number;
+  /** カードの左端。エディタのコンテンツ左端（行番号ガターの右）に揃える。 */
+  contentLeft: number;
   onClose(): void;
   onSelect(id: string): void;
   resolveFileReference(text: string): FileReference | undefined;
   onOpenFileReference(reference: FileReference): void;
   selectedId?: string;
-  width: number;
 };
 
 export function CodeAnnotationLayer({
   anchors,
   annotations,
-  height,
+  contentLeft,
   onClose,
   onSelect,
   resolveFileReference,
   onOpenFileReference,
   selectedId,
-  width,
 }: CodeAnnotationLayerProps) {
-  const [railScrollTop, setRailScrollTop] = useState(0);
   const { contentRef, heights } = useAnnotationCardHeights(
     annotations.map((annotation) => annotation.id).join("\n"),
   );
-  const collapsedIds = collapsedAnnotationIds(anchors, height, selectedId);
-  const placements = layoutAnnotationCards(anchors, {
-    // 畳む対象は実測より定数を優先する。畳む・畳まないが切り替わった直後の 1 フレームは
-    // 前の姿の実測が残っており、それで積むとカードがずれたり重なったりする。
-    heightOf: (id) =>
-      collapsedIds.has(id)
-        ? COLLAPSED_ANNOTATION_CARD_HEIGHT
-        : (heights[id] ??
-          (id === selectedId
-            ? EXPANDED_ANNOTATION_CARD_HEIGHT
-            : ANNOTATION_CARD_HEIGHT)),
+  // アンカーが見えていないカードは描かない。押し下げの計算にも入れない
+  // （画面外のブロックのカードが、見えているブロックのカードを押し下げてしまう）。
+  const visibleAnchors = anchors.filter((anchor) => anchor.visible);
+  const placements = layoutAnnotationCards(visibleAnchors, {
+    heightOf: (id) => heights[id] ?? ANNOTATION_CARD_HEIGHT,
   });
   const placementById = new Map(
     placements.map((placement) => [placement.id, placement]),
   );
-  const railHeight = annotationRailHeight(placements, height);
-  const isScrollable = railHeight > height;
-  const scrollTop = isScrollable ? railScrollTop : 0;
-  const lineStart = Math.max(width - 113, 90);
-  // カード左端はエディタ面の右端から 23px（レールの右余白 15px とカードの内側余白）。
-  const lineEnd = width + 23;
 
   return (
     <aside
@@ -69,27 +70,6 @@ export function CodeAnnotationLayer({
       aria-label="コード注釈"
       data-testid="code-annotation-layer"
     >
-      <svg
-        className="code-annotation-connectors"
-        aria-hidden="true"
-        width={width}
-        height={height}
-      >
-        {annotations.map((annotation, index) => {
-          const placement = placementById.get(annotation.id);
-          if (!placement?.visible) return null;
-          const cardCenter =
-            placement.cardTop + placement.cardHeight / 2 - scrollTop;
-          if (cardCenter < 0 || cardCenter > height) return null;
-          return (
-            <path
-              className={`annotation-connector annotation-color-${(index % 4) + 1}${annotation.id === selectedId ? " is-selected" : ""}`}
-              d={`M ${lineStart} ${placement.top} C ${lineStart + 28} ${placement.top}, ${lineEnd - 28} ${cardCenter}, ${lineEnd} ${cardCenter}`}
-              key={annotation.id}
-            />
-          );
-        })}
-      </svg>
       <button
         className="code-annotation-close"
         type="button"
@@ -99,68 +79,49 @@ export function CodeAnnotationLayer({
       >
         ×
       </button>
-      <div
-        className={`code-annotation-rail${isScrollable ? " is-scrollable" : ""}`}
-        onScroll={(event: UIEvent<HTMLDivElement>) => {
-          if (isScrollable) setRailScrollTop(event.currentTarget.scrollTop);
-        }}
-      >
-        <div
-          className="code-annotation-rail-content"
-          ref={contentRef}
-          style={{ height: `${railHeight}px` }}
-        >
-          {annotations.map((annotation, index) => {
-            const placement = placementById.get(annotation.id);
-            const selected = annotation.id === selectedId;
-            const offscreen = !placement?.visible;
-            const collapsed = collapsedIds.has(annotation.id);
-            const style = {
-              top: `${placement?.cardTop ?? ANNOTATION_RAIL_MARGIN}px`,
-            } satisfies CSSProperties;
-            // 本文の Markdown にファイルリンク（button）が入るため、カード全体を
-            // button にせず、番号と見出しの button で選択とキーボード操作を受ける。
-            // カード本体の click は補助で、リンク側は stopPropagation で切り分ける。
-            return (
-              <div
-                className={`code-annotation-card annotation-color-${(index % 4) + 1}${selected ? " is-selected" : ""}${offscreen ? " is-offscreen" : ""}${collapsed ? " is-collapsed" : ""}`}
-                data-annotation-id={annotation.id}
-                data-testid="code-annotation-card"
-                key={annotation.id}
-                onClick={() => onSelect(annotation.id)}
-                style={style}
+      <div className="code-annotation-cards" ref={contentRef}>
+        {annotations.map((annotation, index) => {
+          const placement = placementById.get(annotation.id);
+          if (!placement) return null;
+          const selected = annotation.id === selectedId;
+          const style = {
+            top: `${placement.cardTop}px`,
+            left: `${contentLeft}px`,
+          } satisfies CSSProperties;
+          // 本文の Markdown にファイルリンク（button）が入るため、カード全体を
+          // button にせず、番号と見出しの button で選択とキーボード操作を受ける。
+          // カード本体の click は補助で、リンク側は stopPropagation で切り分ける。
+          return (
+            <div
+              className={`code-annotation-card annotation-color-${(index % 4) + 1}${selected ? " is-selected" : ""}`}
+              data-annotation-id={annotation.id}
+              data-testid="code-annotation-card"
+              key={annotation.id}
+              onClick={() => onSelect(annotation.id)}
+              style={style}
+            >
+              <button
+                aria-label={`${index + 1}. ${annotation.label}のコードを表示`}
+                aria-pressed={selected}
+                className="code-annotation-select"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect(annotation.id);
+                }}
+                type="button"
               >
-                <button
-                  aria-label={`${index + 1}. ${annotation.label}のコードを表示`}
-                  aria-pressed={selected}
-                  className="code-annotation-select"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onSelect(annotation.id);
-                  }}
-                  type="button"
-                >
-                  <span className="code-annotation-number">{index + 1}</span>
-                  <strong>{annotation.label}</strong>
-                  {offscreen && (
-                    <span
-                      className="code-annotation-offscreen"
-                      aria-hidden="true"
-                    >
-                      ↕
-                    </span>
-                  )}
-                </button>
-                <TourMarkdown
-                  className="code-annotation-body"
-                  text={annotation.explanation}
-                  resolveFileReference={resolveFileReference}
-                  onOpenFileReference={onOpenFileReference}
-                />
-              </div>
-            );
-          })}
-        </div>
+                <span className="code-annotation-number">{index + 1}</span>
+                <strong>{annotation.label}</strong>
+              </button>
+              <TourMarkdown
+                className="code-annotation-body"
+                text={annotation.explanation}
+                resolveFileReference={resolveFileReference}
+                onOpenFileReference={onOpenFileReference}
+              />
+            </div>
+          );
+        })}
       </div>
     </aside>
   );

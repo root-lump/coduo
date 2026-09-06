@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 注釈カードの描画テスト（見出し・Markdown 本文・選択とファイルリンクの切り分け）。
+// 注釈カードの描画テスト（見出し・Markdown 本文・選択とファイルリンクの切り分け・配置）。
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CodeAnnotation } from "../../review";
@@ -25,18 +25,17 @@ const annotations: CodeAnnotation[] = [
 
 const visibleAnchors = [
   { id: "a-1", top: 40, visible: true },
-  { id: "a-2", top: 80, visible: true },
+  { id: "a-2", top: 300, visible: true },
 ];
 
-function renderLayer(anchors = visibleAnchors, height = 600) {
+function renderLayer(anchors = visibleAnchors) {
   const onSelect = vi.fn();
   const onOpenFileReference = vi.fn();
   render(
     <CodeAnnotationLayer
       anchors={anchors}
       annotations={annotations}
-      height={height}
-      width={800}
+      contentLeft={64}
       onClose={() => undefined}
       onSelect={onSelect}
       resolveFileReference={(text) => parseFileReference(text, files)}
@@ -71,6 +70,14 @@ describe("CodeAnnotationLayer", () => {
     expect(onSelect).toHaveBeenCalledTimes(2);
   });
 
+  it("カードをブロックの直下に、コードの左端へ揃えて置く", () => {
+    const cards = (renderLayer(), screen.getAllByTestId("code-annotation-card"));
+    // 40 + 6（アンカーとカードの間隔）。
+    expect(cards[0].style.top).toBe("46px");
+    expect(cards[0].style.left).toBe("64px");
+    expect(cards[1].style.top).toBe("306px");
+  });
+
   it("表示倍率が変わっても、カードは実際に占める高さの分だけ間を空ける", () => {
     // 倍率は documentElement の CSS zoom で変えるため、getBoundingClientRect は
     // スケール後の値を返す。それで積むとカードが重なる。
@@ -87,42 +94,27 @@ describe("CodeAnnotationLayer", () => {
       },
     );
 
-    renderLayer();
+    renderLayer([
+      { id: "a-1", top: 40, visible: true },
+      { id: "a-2", top: 60, visible: true },
+    ]);
 
     const cards = screen.getAllByTestId("code-annotation-card");
-    expect(cards[0].style.top).toBe("18px");
-    // 18 + 137 + 13。スケール後の 109.6 で積むと 140.6px になり、カードが重なる。
-    expect(cards[1].style.top).toBe("168px");
+    expect(cards[0].style.top).toBe("46px");
+    // 46 + 137 + 13。スケール後の 109.6 で積むと 168.6px になり、カードが重なる。
+    expect(cards[1].style.top).toBe("196px");
   });
 
-  const offscreenAnchors = [
-    { id: "a-1", top: 4, visible: false },
-    { id: "a-2", top: 80, visible: true },
-  ];
-
-  it("レールに余裕があれば画面外のカードも畳まない", () => {
-    renderLayer(offscreenAnchors);
+  it("アンカーが画面外のカードは描かず、後続のカードも押し下げない", () => {
+    renderLayer([
+      { id: "a-1", top: 0, visible: false },
+      { id: "a-2", top: 300, visible: true },
+    ]);
 
     const cards = screen.getAllByTestId("code-annotation-card");
-    expect(cards[0].className).toContain("is-offscreen");
-    expect(cards[0].className).not.toContain("is-collapsed");
-  });
-
-  it("収まらないときは画面外のカードを畳んだ高さで積み、後続のカードを押し出さない", () => {
-    const measured: Record<string, number> = { "a-1": 46, "a-2": 137 };
-    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
-      function (this: HTMLElement) {
-        return measured[this.dataset.annotationId ?? ""] ?? 0;
-      },
-    );
-
-    renderLayer(offscreenAnchors, 300);
-
-    const cards = screen.getAllByTestId("code-annotation-card");
-    expect(cards[0].className).toContain("is-collapsed");
-    expect(cards[1].className).not.toContain("is-collapsed");
-    // 18 + 46 + 13。畳まずに選択中の 330 で積むと、後続が表示域を外れる。
-    expect(cards[1].style.top).toBe("77px");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].dataset.annotationId).toBe("a-2");
+    expect(cards[0].style.top).toBe("306px");
   });
 
   it("本文のファイルリンクは参照を通知し、カードの選択には伝播しない", () => {

@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   annotationAnchor,
   annotationAtPosition,
-  annotationRailHeight,
-  collapsedAnnotationIds,
   containsCodePosition,
   layoutAnnotationCards,
 } from "./codeAnnotations";
@@ -45,73 +43,32 @@ describe("code annotations", () => {
     expect(annotation?.id).toBe("a");
   });
 
-  it("keeps cards ordered and separated, centered on their anchors", () => {
+  it("hangs each card just below its anchor", () => {
+    const placements = layoutAnnotationCards(
+      [
+        { id: "a", top: 80, visible: true },
+        { id: "b", top: 300, visible: true },
+      ],
+      { heightOf: () => 80, gap: 10, offset: 6 },
+    );
+
+    expect(placements[0].cardTop).toBe(86);
+    expect(placements[1].cardTop).toBe(306);
+  });
+
+  it("pushes an overlapping card down instead of covering the previous one", () => {
     const placements = layoutAnnotationCards(
       [
         { id: "a", top: 80, visible: true },
         { id: "b", top: 90, visible: true },
         { id: "c", top: 100, visible: true },
       ],
-      { heightOf: () => 80, gap: 10, margin: 10 },
+      { heightOf: () => 80, gap: 10, offset: 6 },
     );
-    expect(placements[0].cardTop).toBe(40);
-    expect(
-      placements[1].cardTop - placements[0].cardTop,
-    ).toBeGreaterThanOrEqual(90);
-    expect(placements[2].cardTop).toBeLessThanOrEqual(310);
-    expect(annotationRailHeight(placements, 400, 10)).toBe(400);
-  });
 
-  it("keeps a card attached to an anchor near the bottom and lets the rail scroll", () => {
-    // 表示領域に押し戻すと、低いペインではスクロールしてもカードが動かなくなる。
-    const placements = layoutAnnotationCards([{ id: "a", top: 380, visible: true }], {
-      heightOf: () => 80,
-      gap: 10,
-      margin: 10,
-    });
-    expect(placements[0].cardTop).toBe(340);
-    expect(annotationRailHeight(placements, 400, 10)).toBe(430);
-  });
-
-  it("stacks cards into a taller scrollable rail when they cannot all fit", () => {
-    const anchors = Array.from({ length: 8 }, (_, index) => ({
-      id: `a${index}`,
-      top: 40 + index * 6,
-      visible: true,
-    }));
-
-    const placements = layoutAnnotationCards(anchors, {
-      heightOf: () => 80,
-      gap: 10,
-      margin: 10,
-    });
-
-    expect(placements[0].cardTop).toBeGreaterThanOrEqual(10);
-    placements.forEach((placement, index) => {
-      if (index === 0) return;
-      expect(
-        placement.cardTop - placements[index - 1].cardTop,
-      ).toBeGreaterThanOrEqual(90);
-    });
-    expect(annotationRailHeight(placements, 300, 10)).toBeGreaterThan(300);
-  });
-
-  it("reserves the taller footprint of the expanded selected card", () => {
-    const anchors = [
-      { id: "a", top: 40, visible: true },
-      { id: "b", top: 60, visible: true },
-    ];
-
-    const placements = layoutAnnotationCards(anchors, {
-      heightOf: (id) => (id === "a" ? 240 : 80),
-      gap: 10,
-      margin: 10,
-    });
-
-    expect(
-      placements[1].cardTop - placements[0].cardTop,
-    ).toBeGreaterThanOrEqual(250);
-    expect(annotationRailHeight(placements, 600, 10)).toBe(600);
+    expect(placements[0].cardTop).toBe(86);
+    expect(placements[1].cardTop).toBe(176);
+    expect(placements[2].cardTop).toBe(266);
   });
 
   it("leaves exactly the gap between cards of different measured heights", () => {
@@ -133,25 +90,21 @@ describe("code annotations", () => {
     ]);
   });
 
-  it("does not push the next card down when the selected card stays short", () => {
-    const anchors = [
-      { id: "a", top: 200, visible: true },
-      { id: "b", top: 360, visible: true },
-    ];
+  it("keeps a card attached to an anchor near the bottom", () => {
+    // 表示領域へ押し戻すと、どのブロックに付いた注釈かが分からなくなる。
+    const placements = layoutAnnotationCards(
+      [{ id: "a", top: 380, visible: true }],
+      { heightOf: () => 80, gap: 10, offset: 6 },
+    );
 
-    const placements = layoutAnnotationCards(anchors, {
-      heightOf: () => 137,
-    });
-
-    // アンカーどうしが 160px 離れていれば、137 + 13 の押し下げは効かない。
-    expect(placements[1].cardTop).toBe(360 - 137 / 2);
+    expect(placements[0].cardTop).toBe(386);
   });
 });
 
 describe("annotationAnchor", () => {
   const visibleRanges = [{ startLineNumber: 20, endLineNumber: 40 }];
 
-  it("uses the line center for a visible line", () => {
+  it("anchors to the bottom of the visible line", () => {
     expect(
       annotationAnchor({
         id: "a",
@@ -160,7 +113,7 @@ describe("annotationAnchor", () => {
         position: { top: 200, height: 20 },
         viewportHeight: 500,
       }),
-    ).toEqual({ id: "a", top: 210, visible: true });
+    ).toEqual({ id: "a", top: 220, visible: true });
   });
 
   it("treats a line outside the visible ranges as offscreen even when Monaco returns a position", () => {
@@ -173,7 +126,7 @@ describe("annotationAnchor", () => {
         position: { top: -230, height: 20 },
         viewportHeight: 500,
       }),
-    ).toEqual({ id: "a", top: 4, visible: false });
+    ).toEqual({ id: "a", top: 0, visible: false });
     expect(
       annotationAnchor({
         id: "b",
@@ -182,7 +135,7 @@ describe("annotationAnchor", () => {
         position: { top: 730, height: 20 },
         viewportHeight: 500,
       }),
-    ).toEqual({ id: "b", top: 496, visible: false });
+    ).toEqual({ id: "b", top: 0, visible: false });
   });
 
   it("clamps a partially visible line to the viewport", () => {
@@ -194,7 +147,7 @@ describe("annotationAnchor", () => {
         position: { top: -15, height: 20 },
         viewportHeight: 500,
       }),
-    ).toEqual({ id: "a", top: 0, visible: true });
+    ).toEqual({ id: "a", top: 5, visible: true });
   });
 
   it("is offscreen when Monaco has no position", () => {
@@ -206,50 +159,6 @@ describe("annotationAnchor", () => {
         position: null,
         viewportHeight: 500,
       }),
-    ).toEqual({ id: "a", top: 496, visible: false });
-  });
-});
-
-describe("collapsedAnnotationIds", () => {
-  // 詰まった 3 枚の画面外カードと、可視の 1 枚。畳む枚数ごとの必要高さは
-  // 0 枚で 370px、1 枚で 310px、2 枚で 250px、3 枚で 190px になる。
-  const anchors = [
-    { id: "a", top: 20, visible: false },
-    { id: "b", top: 30, visible: false },
-    { id: "c", top: 40, visible: false },
-    { id: "d", top: 60, visible: true },
-  ];
-  const options = {
-    cardHeight: 80,
-    collapsedHeight: 20,
-    expandedHeight: 200,
-    gap: 10,
-    margin: 10,
-  };
-
-  it("収まるなら 1 枚も畳まない", () => {
-    expect([...collapsedAnnotationIds(anchors, 380, undefined, options)]).toEqual(
-      [],
-    );
-  });
-
-  it("収まらないときは画面外のカードを上から必要な枚数だけ畳む", () => {
-    expect([...collapsedAnnotationIds(anchors, 320, undefined, options)]).toEqual(
-      ["a"],
-    );
-    expect([...collapsedAnnotationIds(anchors, 260, undefined, options)]).toEqual(
-      ["a", "b"],
-    );
-  });
-
-  it("画面外のカードを全部畳んでも収まらないときはそこで止める", () => {
-    expect([...collapsedAnnotationIds(anchors, 100, undefined, options)]).toEqual(
-      ["a", "b", "c"],
-    );
-  });
-
-  it("アンカーが可視のカードは畳まない", () => {
-    const collapsed = collapsedAnnotationIds(anchors, 100, "d", options);
-    expect(collapsed.has("d")).toBe(false);
+    ).toEqual({ id: "a", top: 0, visible: false });
   });
 });
