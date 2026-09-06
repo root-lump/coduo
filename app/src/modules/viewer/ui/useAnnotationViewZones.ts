@@ -58,23 +58,41 @@ function zoneTintClass(
 }
 
 /**
- * 縦位置 y に、その位置以降で最初に来る行。差分の行の対応を自前で計算せず、
- * Monaco が既に揃えている縦位置から引く（2 つのエディタは同じ位置に並ぶ）。
- * topOf は単調増加なので二分探索でよい。行が無ければ lineCount + 1 を返す。
+ * 変更後の行 line の直前に空きを入れるとき、元ファイル側でその空きを入れる行。
+ *
+ * line が変更のかたまりの内側にあるときは、そのかたまりの元ファイル側の最後の行を
+ * 返す。差分の 1 画面表示では、削除された行と追加された行が縦に並び、元ファイル側の
+ * 帯は削除された行の番号を出したあと追加された行を飛ばす。かたまりの途中に空きを
+ * 入れると、その番号の並びが分断されて追加行の横へ押し出される。
+ *
+ * かたまりの外なら、それまでの増減を足した位置を返す。
  */
-export function lineAtOrBelowVerticalOffset(
-  topOf: (line: number) => number,
-  lineCount: number,
-  y: number,
+export function originalLineForSpacer(
+  line: number,
+  changes: readonly editor.ILineChange[],
 ): number {
-  let low = 1;
-  let high = Math.max(lineCount, 1);
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-    if (topOf(middle) >= y) high = middle;
-    else low = middle + 1;
+  let delta = 0;
+  for (const change of changes) {
+    const insertsOnly = change.originalEndLineNumber === 0;
+    const deletesOnly = change.modifiedEndLineNumber === 0;
+    const modifiedStart = change.modifiedStartLineNumber;
+    const modifiedEnd = deletesOnly ? modifiedStart : change.modifiedEndLineNumber;
+    if (modifiedStart > line) break;
+    // かたまりの内側（挿入だけの場合は挿入位置の直後も内側とみなす）
+    if (!deletesOnly && modifiedEnd >= line) {
+      return insertsOnly
+        ? change.originalStartLineNumber
+        : change.originalEndLineNumber;
+    }
+    const added = deletesOnly
+      ? 0
+      : change.modifiedEndLineNumber - modifiedStart + 1;
+    const removed = insertsOnly
+      ? 0
+      : change.originalEndLineNumber - change.originalStartLineNumber + 1;
+    delta += removed - added;
   }
-  return topOf(low) >= y ? low : lineCount + 1;
+  return Math.max(line - 1 + delta, 0);
 }
 
 /**
@@ -134,6 +152,7 @@ export function useAnnotationViewZones({
     const lineCount = model.getLineCount();
     const originalEditor = diffEditor?.getOriginalEditor();
     const originalLineCount = originalEditor?.getModel()?.getLineCount() ?? 0;
+    const changes = diffEditor?.getLineChanges() ?? [];
     const created: AnnotationViewZone[] = [];
     const spacers: { annotationId: string; zone: editor.IViewZone }[] = [];
     editorInstance.changeViewZones((accessor) => {
@@ -159,22 +178,18 @@ export function useAnnotationViewZones({
           domNode,
           marginDomNode,
         };
-        // カードが入る縦位置。zone を挿す前に測る（挿した後だとこの zone 自身の
-        // 高さが入る）。同じ行に来ている元ファイル側の行の直前へ空きを挿す。
-        const top = editorInstance.getTopForLineNumber(afterLineNumber + 1);
         const zoneId = accessor.addZone(zone);
         entriesRef.current.set(annotation.id, { zoneId, zone });
         created.push({ annotationId: annotation.id, domNode });
         if (originalEditor && originalLineCount > 0) {
-          const alignedLine = lineAtOrBelowVerticalOffset(
-            (line) => originalEditor.getTopForLineNumber(line),
-            originalLineCount,
-            top,
+          const alignedLine = originalLineForSpacer(
+            range.startLineNumber,
+            changes,
           );
           spacers.push({
             annotationId: annotation.id,
             zone: {
-              afterLineNumber: Math.max(alignedLine - 1, 0),
+              afterLineNumber: Math.min(alignedLine, originalLineCount),
               ordinal: ANNOTATION_ZONE_ORDINAL,
               heightInPx: ANNOTATION_CARD_HEIGHT,
               // 元ファイル側は場所を空けるだけ。中身は持たせない。
