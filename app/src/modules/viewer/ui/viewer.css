@@ -519,15 +519,21 @@ button.flow-path-chip:hover {
  * view zone の行。すぐ下の行（注釈ブロックの先頭行）の差分の色をこの行にも敷く。
  * 行に付いた色の帯がカードの位置で途切れると、その行だけ色が抜けて見える。
  * 本文側（domNode）と行番号側（marginDomNode）の両方に敷かないと、カードの左が
- * 塗り残しになる。注釈の色は敷かない（差分の色より濃く、緑や赤が負けるため）。
+ * 塗り残しになる。ただし色は別で、Monaco は行番号側に本文とは違う色を 1 枚だけ
+ * 乗せる。注釈の色は敷かない（差分の色より濃く、緑や赤が負けるため）。
  */
-.code-annotation-zone,
-.code-annotation-zone-margin {
+/* 本文側は行と同じ 2 枚（行全体の色 + 変わった文字の色）。 */
+.code-annotation-zone {
   background-color: var(--change-tint, transparent);
   background-image: linear-gradient(
     var(--change-text-tint, transparent),
     var(--change-text-tint, transparent)
   );
+}
+
+/* 行番号側は本文と別の色が 1 枚だけ乗る。本文と同じ塗りにすると濃くなりすぎる。 */
+.code-annotation-zone-margin {
+  background-color: var(--gutter-tint, transparent);
 }
 
 .code-annotation-zone {
@@ -540,17 +546,17 @@ button.flow-path-chip:hover {
   padding: 3px 12px 3px 0;
 }
 
-/* コードモードの変更行の色（.git-line-* と同じ値）。 */
-.code-annotation-zone.is-added,
-.code-annotation-zone-margin.is-added {
+/*
+ * コードモードの変更行の色（.git-line-* と同じ値）。行番号側は 2px の印だけで
+ * 塗らないので、余白の色は置かない。
+ */
+.code-annotation-zone.is-added {
   --change-tint: #3fb9500b;
 }
-.code-annotation-zone.is-modified,
-.code-annotation-zone-margin.is-modified {
+.code-annotation-zone.is-modified {
   --change-tint: #d2992209;
 }
-.code-annotation-zone.is-deleted,
-.code-annotation-zone-margin.is-deleted {
+.code-annotation-zone.is-deleted {
   --change-tint: #ef6a7109;
 }
 
@@ -566,11 +572,13 @@ button.flow-path-chip:hover {
 .modified-in-monaco-diff-editor .code-annotation-zone-margin.is-modified {
   --change-tint: var(--vscode-diffEditor-insertedLineBackground);
   --change-text-tint: var(--vscode-diffEditor-insertedTextBackground);
+  --gutter-tint: var(--vscode-diffEditorGutter-insertedLineBackground);
 }
 .modified-in-monaco-diff-editor .code-annotation-zone.is-deleted,
 .modified-in-monaco-diff-editor .code-annotation-zone-margin.is-deleted {
   --change-tint: var(--vscode-diffEditor-removedLineBackground);
   --change-text-tint: var(--vscode-diffEditor-removedTextBackground);
+  --gutter-tint: var(--vscode-diffEditorGutter-removedLineBackground);
 }
 
 .code-annotation-card {
