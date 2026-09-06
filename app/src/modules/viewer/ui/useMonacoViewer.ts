@@ -145,6 +145,13 @@ export function useMonacoViewer({
   const [editorInstance, setEditorInstance] = useState<
     editor.ICodeEditor | undefined
   >(undefined);
+  // 差分エディタ本体。注釈の view zone を元ファイル側にも対で挿すために要る
+  // （片側だけに挿すと、2 つのエディタの縦の対応がずれる）。
+  const [diffEditor, setDiffEditor] = useState<editor.IDiffEditor | undefined>(
+    undefined,
+  );
+  // 差分が計算し直された合図。行の対応が変わるので zone を張り直す。
+  const [diffToken, setDiffToken] = useState(0);
 
   const annotationsRef = useRef(annotations);
   annotationsRef.current = annotations;
@@ -323,6 +330,7 @@ export function useMonacoViewer({
   };
 
   const handleMount: OnMount = (editorInstance) => {
+    setDiffEditor(undefined);
     attachEditor({
       editorInstance,
       surface: () => editorInstance.getDomNode(),
@@ -333,12 +341,16 @@ export function useMonacoViewer({
 
   const handleDiffMount: DiffOnMount = (diffEditor) => {
     const modified = diffEditor.getModifiedEditor();
+    setDiffEditor(diffEditor);
     attachEditor({
       editorInstance: modified,
       surface: () => diffEditor.getContainerDomNode(),
       // 差分計算の完了と未変更領域の折り畳み変化で行の位置が動く。
       extraListeners: [
-        diffEditor.onDidUpdateDiff(schedulePositionUpdate),
+        diffEditor.onDidUpdateDiff(() => {
+          setDiffToken((current) => current + 1);
+          schedulePositionUpdate();
+        }),
         modified.onDidChangeHiddenAreas(schedulePositionUpdate),
       ],
       paintChangedLines: false,
@@ -421,6 +433,8 @@ export function useMonacoViewer({
   );
 
   return {
+    diffEditor,
+    diffToken,
     editorInstance,
     handleDiffMount,
     handleMount,

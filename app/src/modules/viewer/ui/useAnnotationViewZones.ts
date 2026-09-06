@@ -27,6 +27,14 @@ type UseAnnotationViewZonesArgs = {
   annotations: CodeAnnotation[];
   /** 行の色をブロックの先頭行に合わせるための変更行。 */
   changedLines: ChangedLine[];
+  /**
+   * 差分エディタ本体。あるときは元ファイル側にも同じ高さの空 zone を対で挿す。
+   * 1 画面表示では元ファイル側が行番号だけの帯として残り、Monaco はこちらが挿した
+   * zone の分をその帯に反映しないため、挿さないとカードの高さぶん番号がずれる。
+   */
+  diffEditor?: editor.IDiffEditor;
+  /** 差分が計算し直された合図。行の対応が変わるので zone を張り直す。 */
+  diffToken?: number;
   /** 表示中のファイル。モデルが差し替わると zone は失われる。 */
   filePath?: string;
   /** エディタ実体が入れ替わった合図。zone は作り直しになる。 */
@@ -47,6 +55,26 @@ function zoneTintClass(
 ): string {
   const kind = annotationChangeKind(annotation, changedLines);
   return kind ? `is-${kind}` : "";
+}
+
+/**
+ * 縦位置 y に、その位置以降で最初に来る行。差分の行の対応を自前で計算せず、
+ * Monaco が既に揃えている縦位置から引く（2 つのエディタは同じ位置に並ぶ）。
+ * topOf は単調増加なので二分探索でよい。行が無ければ lineCount + 1 を返す。
+ */
+export function lineAtOrBelowVerticalOffset(
+  topOf: (line: number) => number,
+  lineCount: number,
+  y: number,
+): number {
+  let low = 1;
+  let high = Math.max(lineCount, 1);
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (topOf(middle) >= y) high = middle;
+    else low = middle + 1;
+  }
+  return topOf(low) >= y ? low : lineCount + 1;
 }
 
 /**
@@ -71,13 +99,23 @@ export function useAnnotationViewZones({
   editorInstance,
   annotations,
   changedLines,
+  diffEditor,
+  diffToken,
   filePath,
   mountToken,
 }: UseAnnotationViewZonesArgs) {
   const [zones, setZones] = useState<AnnotationViewZone[]>([]);
   // zone の実体（Monaco が返す id と、高さを書き換えるための IViewZone）。
   const entriesRef = useRef(
-    new Map<string, { zoneId: string; zone: editor.IViewZone }>(),
+    new Map<
+      string,
+      {
+        zoneId: string;
+        zone: editor.IViewZone;
+        /** 元ファイル側の対の空き。差分エディタのときだけ持つ。 */
+        original?: { zoneId: string; zone: editor.IViewZone };
+      }
+    >(),
   );
   const annotationsRef = useRef(annotations);
   annotationsRef.current = annotations;
@@ -94,7 +132,10 @@ export function useAnnotationViewZones({
       return;
     }
     const lineCount = model.getLineCount();
+    const originalEditor = diffEditor?.getOriginalEditor();
+    const originalLineCount = originalEditor?.getModel()?.getLineCount() ?? 0;
     const created: AnnotationViewZone[] = [];
+    const spacers: { annotationId: string; zone: editor.IViewZone }[] = [];
     editorInstance.changeViewZones((accessor) => {
       annotationsRef.current.forEach((annotation) => {
         const range = focusRange(annotation.target, lineCount);
@@ -106,9 +147,10 @@ export function useAnnotationViewZones({
         // 行の色の帯がカードの左で途切れる。
         const marginDomNode = document.createElement("div");
         marginDomNode.className = `code-annotation-zone-margin ${tint}`.trim();
+        const afterLineNumber = Math.max(range.startLineNumber - 1, 0);
         const zone: editor.IViewZone = {
           // カードはブロックの上に出す。0 は「先頭行の前」の意味になる。
-          afterLineNumber: Math.max(range.startLineNumber - 1, 0),
+          afterLineNumber,
           // 同じ行に複数の zone があるときは ordinal の小さい順に並ぶ。差分エディタは
           // 削除された行を同じ afterLineNumber へ既定値（10000）で挿すので、それより
           // 大きい値にして、カードが削除側ではなく変更後の行の直上に来るようにする。
@@ -117,10 +159,42 @@ export function useAnnotationViewZones({
           domNode,
           marginDomNode,
         };
+        // カードが入る縦位置。zone を挿す前に測る（挿した後だとこの zone 自身の
+        // 高さが入る）。同じ行に来ている元ファイル側の行の直前へ空きを挿す。
+        const top = editorInstance.getTopForLineNumber(afterLineNumber + 1);
         const zoneId = accessor.addZone(zone);
         entriesRef.current.set(annotation.id, { zoneId, zone });
         created.push({ annotationId: annotation.id, domNode });
+        if (originalEditor && originalLineCount > 0) {
+          const alignedLine = lineAtOrBelowVerticalOffset(
+            (line) => originalEditor.getTopForLineNumber(line),
+            originalLineCount,
+            top,
+          );
+          spacers.push({
+            annotationId: annotation.id,
+            zone: {
+              afterLineNumber: Math.max(alignedLine - 1, 0),
+              ordinal: ANNOTATION_ZONE_ORDINAL,
+              heightInPx: ANNOTATION_CARD_HEIGHT,
+              // 元ファイル側は場所を空けるだけ。中身は持たせない。
+              domNode: document.createElement("div"),
+              showInHiddenAreas: true,
+              suppressMouseDown: true,
+            },
+          });
+        }
       });
+    });
+    originalEditor?.changeViewZones((accessor) => {
+      for (const spacer of spacers) {
+        const entry = entriesRef.current.get(spacer.annotationId);
+        if (!entry) continue;
+        entry.original = {
+          zoneId: accessor.addZone(spacer.zone),
+          zone: spacer.zone,
+        };
+      }
     });
     setZones(created);
     return () => {
@@ -130,9 +204,14 @@ export function useAnnotationViewZones({
       editorInstance.changeViewZones((accessor) => {
         for (const entry of entries) accessor.removeZone(entry.zoneId);
       });
+      originalEditor?.changeViewZones((accessor) => {
+        for (const entry of entries) {
+          if (entry.original) accessor.removeZone(entry.original.zoneId);
+        }
+      });
       setZones([]);
     };
-  }, [editorInstance, filePath, mountToken, signature]);
+  }, [diffEditor, diffToken, editorInstance, filePath, mountToken, signature]);
 
   /** カードの実測高さを zone に反映する。1px 未満の差では反映しない。 */
   const setZoneHeight = (annotationId: string, height: number) => {
@@ -143,6 +222,14 @@ export function useAnnotationViewZones({
     editorInstance?.changeViewZones((accessor) => {
       accessor.layoutZone(entry.zoneId);
     });
+    // 元ファイル側の空きも同じ高さにしないと、縦の対応がずれる。
+    const original = entry.original;
+    if (original) {
+      original.zone.heightInPx = height;
+      diffEditor?.getOriginalEditor().changeViewZones((accessor) => {
+        accessor.layoutZone(original.zoneId);
+      });
+    }
   };
 
   return { zones, setZoneHeight };

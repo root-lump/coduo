@@ -113,6 +113,8 @@ export function CodeViewer({
     editor.ICodeEditor | undefined
   >(undefined);
   const {
+    diffEditor,
+    diffToken,
     editorInstance,
     handleDiffMount,
     handleMount,
@@ -139,6 +141,8 @@ export function CodeViewer({
     editorInstance,
     annotations,
     changedLines,
+    diffEditor,
+    diffToken,
     filePath: file?.path,
     mountToken,
   });
