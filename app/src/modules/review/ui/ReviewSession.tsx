@@ -88,9 +88,9 @@ export function ReviewSession({
         >
           <div className="step-meta">
             <span>ステップ {currentStepIndex + 1}</span>
-            {step.annotations.length > 0 && (
+            {(step.annotations ?? []).length > 0 && (
               <span className="annotation-count-badge">
-                コード注釈 {step.annotations.length}
+                コード注釈 {(step.annotations ?? []).length}
               </span>
             )}
             {relation && (

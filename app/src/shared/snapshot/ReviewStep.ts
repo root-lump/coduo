@@ -20,5 +20,9 @@ export type ReviewStep = {
    * 知らない古い payload をそのまま読むため。
    */
   jumps?: CodeJump[];
-  annotations: Array<CodeAnnotation>;
+  /**
+   * ステップの範囲に置く注釈。生成側（validate-tour）は必須として検査するが、
+   * 欠けた Tour でも画面全体が落ちないよう、ビューアは欠落を空として読む。
+   */
+  annotations?: CodeAnnotation[];
 };

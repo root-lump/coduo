@@ -11,7 +11,7 @@ export function resolveReviewStep(
     file: step.target?.file,
     focus: step.target ?? undefined,
     explanation: step.explanation,
-    annotations: step.annotations.map((annotation, index) => ({
+    annotations: (step.annotations ?? []).map((annotation, index) => ({
       ...annotation,
       id: annotation.id || `${step.id}-annotation-${index + 1}`,
     })),

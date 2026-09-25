@@ -76,6 +76,18 @@ describe("resolveReviewStep", () => {
     });
   });
 
+  it("reads a step without the annotations key as having no annotations", () => {
+    const overview: ReviewStep = {
+      id: "overview",
+      title: "Overview",
+      explanation: "全体像の説明",
+      target: null,
+      relation: null,
+    };
+
+    expect(resolveReviewStep(overview)?.annotations).toEqual([]);
+  });
+
   it("returns undefined when a tour has no step", () => {
     expect(resolveReviewStep(undefined)).toBeUndefined();
   });

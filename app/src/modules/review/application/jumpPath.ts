@@ -32,7 +32,7 @@ export function scopeOf(
     file: step.target.file,
     range: step.target.range,
     jumps: step.jumps ?? [],
-    annotations: step.annotations,
+    annotations: step.annotations ?? [],
   };
 }
 

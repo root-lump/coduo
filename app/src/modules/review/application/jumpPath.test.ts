@@ -58,6 +58,11 @@ describe("scopeOf", () => {
     });
   });
 
+  it("reads a step without the annotations key as having no annotations", () => {
+    const { annotations: _, ...withoutAnnotations } = step;
+    expect(scopeOf(withoutAnnotations, [])?.annotations).toEqual([]);
+  });
+
   it("depth n is the last jump's destination with its nested jumps", () => {
     expect(scopeOf(step, [outer])).toEqual({
       file: "controller.ts",
