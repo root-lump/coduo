@@ -106,6 +106,15 @@ else {
         !["definition", "reference", "caller", "callee", "data_flow"].includes(step.relation)) {
       push(`${at}: relation が不正です: ${step.relation}`);
     }
+    // ビューアは欠けた annotations を空として読むが、欠落は生成の取り違えなので埋め込み前に弾く。
+    // 型違いのステップは以降の検査（配列前提の length や checkJumps）で重複エラーや例外を出すので飛ばす。
+    const annotationsIsArray = Array.isArray(step.annotations);
+    if (!annotationsIsArray) {
+      push(`${at}: annotations は配列にしてください（注釈が無いステップも空配列 [] を付けます）`);
+    }
+    const jumpsIsValid = step.jumps == null || Array.isArray(step.jumps);
+    if (!jumpsIsValid) push(`${at}: jumps は配列にしてください`);
+    if (!annotationsIsArray || !jumpsIsValid) continue;
     const target = step.target;
     if (target == null) {
       if (!allowFileless) push(`${at}: このモードで概観ステップは使えません`);
