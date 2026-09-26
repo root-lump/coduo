@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CodeAnnotation, CodeJump, ReviewStep } from "../domain";
-import { parentScopeOf, scopeOf } from "./jumpPath";
+import { originScopesOf, parentScopeOf, scopeOf } from "./jumpPath";
 
 const innerAnnotation: CodeAnnotation = {
   id: "j2-a1",
@@ -99,5 +99,43 @@ describe("parentScopeOf", () => {
       startLine: 34,
       endLine: 37,
     });
+  });
+});
+
+describe("originScopesOf", () => {
+  it("is empty at depth 0", () => {
+    expect(originScopesOf(step, [], 2)).toEqual([]);
+  });
+
+  it("lists the scopes above the bottom pane in ascending depth", () => {
+    expect(
+      originScopesOf(step, [outer], 2).map(({ depth, scope, jump }) => [
+        depth,
+        scope.file,
+        jump.id,
+      ]),
+    ).toEqual([[0, "nav.tsx", "j1"]]);
+    expect(
+      originScopesOf(step, [outer, inner], 2).map(({ depth, scope, jump }) => [
+        depth,
+        scope.range,
+        jump.id,
+      ]),
+    ).toEqual([
+      [0, { startLine: 52, endLine: 62 }, "j1"],
+      [1, { startLine: 34, endLine: 37 }, "j2"],
+    ]);
+  });
+
+  it("keeps only the latest maxOrigins scopes", () => {
+    const deepest: CodeJump = { ...inner, id: "j3", jumps: [] };
+    const origins = originScopesOf(step, [outer, inner, deepest], 2);
+    expect(origins.map((origin) => origin.depth)).toEqual([1, 2]);
+    expect(origins.map((origin) => origin.jump.id)).toEqual(["j2", "j3"]);
+    expect(origins[1]?.scope.range).toEqual({ startLine: 22, endLine: 32 });
+  });
+
+  it("is empty when a scope cannot be derived", () => {
+    expect(originScopesOf(undefined, [outer], 2)).toEqual([]);
   });
 });

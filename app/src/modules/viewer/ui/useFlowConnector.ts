@@ -17,6 +17,11 @@ type FlowConnectorArgs = {
   kind: JumpKind | undefined;
   /** 定義の識別子。無ければ線は引かない。 */
   anchor: SymbolLocation | undefined;
+  /**
+   * 真なら線を引かない（畳んだ段に接する線）。高さ 0 のエディタは getVisibleRanges が
+   * 古い値を返しうるので、可視判定に頼らず明示的に消す。
+   */
+  hidden?: boolean;
 };
 
 export type FlowConnectorPath = {
@@ -63,11 +68,20 @@ export function useFlowConnector({
   from,
   kind,
   anchor,
+  hidden = false,
 }: FlowConnectorArgs): FlowConnectorPath | undefined {
   const [path, setPath] = useState<FlowConnectorPath | undefined>(undefined);
 
   useEffect(() => {
-    if (!container || !topEditor || !bottomEditor || !from || !kind || !anchor) {
+    if (
+      hidden ||
+      !container ||
+      !topEditor ||
+      !bottomEditor ||
+      !from ||
+      !kind ||
+      !anchor
+    ) {
       setPath(undefined);
       return;
     }
@@ -118,7 +132,7 @@ export function useFlowConnector({
       observer.disconnect();
       if (frame !== undefined) window.cancelAnimationFrame(frame);
     };
-  }, [container, topEditor, bottomEditor, from, kind, anchor]);
+  }, [container, topEditor, bottomEditor, from, kind, anchor, hidden]);
 
   return path;
 }

@@ -21,7 +21,13 @@ export { useAgentReview } from "./application/useAgentReview";
 export { useReviewController } from "./application/useReviewController";
 export { normalizeAgentReviewError } from "./application/normalizeError";
 export { jumpLabel } from "./application/relation";
-export { parentScopeOf, scopeOf, type JumpScope } from "./application/jumpPath";
+export {
+  originScopesOf,
+  parentScopeOf,
+  scopeOf,
+  type JumpScope,
+  type OriginScope,
+} from "./application/jumpPath";
 export {
   ExplanationPanel,
   type ExplanationPanelProps,
