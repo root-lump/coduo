@@ -32,6 +32,8 @@ const ignoreLocation = () => undefined;
 type FlowOriginPaneProps = {
   /** この段の深さ。モデル URI を段ごとに分けるのに使う。 */
   depth: number;
+  /** 段のヘッダーの aria-controls が指す id。 */
+  id: string;
   /** 外から足すクラス（折りたたみの is-collapsed）。 */
   className?: string;
   file: FileContent;
@@ -60,6 +62,7 @@ type FlowOriginPaneProps = {
 
 export function FlowOriginPane({
   depth,
+  id,
   className: extraClassName,
   file,
   from,
@@ -135,7 +138,7 @@ export function FlowOriginPane({
   } as CSSProperties;
 
   return (
-    <div className={className} style={style}>
+    <div id={id} className={className} style={style}>
       <div className="code-editor-surface">
         <Editor
           height="100%"

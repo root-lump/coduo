@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CodeAnnotation, CodeJump, ReviewStep } from "../domain";
-import { originScopesOf, parentScopeOf, scopeOf } from "./jumpPath";
+import { originScopesOf, scopeOf } from "./jumpPath";
 
 const innerAnnotation: CodeAnnotation = {
   id: "j2-a1",
@@ -88,17 +88,6 @@ describe("scopeOf", () => {
   it("is undefined for overview steps and missing steps", () => {
     expect(scopeOf({ ...step, target: null }, [])).toBeUndefined();
     expect(scopeOf(undefined, [])).toBeUndefined();
-  });
-});
-
-describe("parentScopeOf", () => {
-  it("returns the scope one level up, or undefined at depth 0", () => {
-    expect(parentScopeOf(step, [])).toBeUndefined();
-    expect(parentScopeOf(step, [outer])?.file).toBe("nav.tsx");
-    expect(parentScopeOf(step, [outer, inner])?.range).toEqual({
-      startLine: 34,
-      endLine: 37,
-    });
   });
 });
 

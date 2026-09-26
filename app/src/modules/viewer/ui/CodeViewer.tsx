@@ -1,8 +1,8 @@
 // コードビューアの view。Monaco のライフサイクルは useMonacoViewer が持ち、
 // ここでは placeholder / エディタ / 注釈レイヤの表示だけを組み立てる。
-// ジャンプを開いているときは、参照元（FlowOriginPane）を上段に足して 2 段にする。
+// ジャンプを開いているときは、参照元（FlowOriginPane）を上段に積んで最大 3 段にする。
 import Editor, { DiffEditor } from "@monaco-editor/react";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useId, useState, type CSSProperties } from "react";
 import type { editor } from "monaco-editor";
 import type {
   CodeAnnotation,
@@ -95,6 +95,8 @@ type PaneBarProps = {
   /** 上段だけ。役割ラベルの色を、その段から出るジャンプの種類に合わせる。 */
   kind?: JumpKind;
   collapsed: boolean;
+  /** 折りたたむ本体の要素の id。 */
+  controls: string;
   onToggle(depth: number): void;
 };
 
@@ -105,6 +107,7 @@ function PaneBar({
   label,
   kind,
   collapsed,
+  controls,
   onToggle,
 }: PaneBarProps) {
   const className = [
@@ -119,6 +122,7 @@ function PaneBar({
       type="button"
       className={className}
       aria-expanded={!collapsed}
+      aria-controls={controls}
       onClick={() => onToggle(depth)}
     >
       <span className="flow-pane-path">{path}</span>
@@ -195,11 +199,17 @@ export function CodeViewer({
   >(new Map());
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
   const jumpPath = jumpView?.path;
-  useEffect(() => {
-    // 長さでなく列そのものの変化で整理する。同じ深さで下段が置き換わったときも
-    // 新しい定義を畳んだまま出さないため。
+  const [prunedFor, setPrunedFor] = useState(jumpPath);
+  // 長さでなく列そのものの変化で整理する。同じ深さで下段が置き換わったときも
+  // 新しい定義を畳んだまま出さないため。effect で整理すると列が変わった最初の
+  // 描画に古い折りたたみが 1 フレーム出るので、描画中に state を直す（React は
+  // この描画結果を捨てて、確定前に描画し直す）。
+  if (prunedFor !== jumpPath) {
+    setPrunedFor(jumpPath);
     setCollapsed((current) => pruneCollapsed(current, jumpPath?.length ?? 0));
-  }, [jumpPath]);
+  }
+  const paneIdPrefix = useId();
+  const paneIdOf = (depth: number) => `${paneIdPrefix}pane-${depth}`;
   const rail = useAnnotationRailSizing(viewerElement);
   const {
     anchors,
@@ -351,6 +361,7 @@ export function CodeViewer({
   const targetPane = (
     <div
       key="target"
+      id={paneIdOf(targetDepth)}
       className={
         targetCollapsed ? `${viewerClassName} is-collapsed` : viewerClassName
       }
@@ -416,11 +427,13 @@ export function CodeViewer({
           label={origin.depth === 0 ? PANE_LABELS.origin : PANE_LABELS.middle}
           kind={origin.kind}
           collapsed={collapsed.has(origin.depth)}
+          controls={paneIdOf(origin.depth)}
           onToggle={toggle}
         />,
         // key を深さで固定し、ジャンプの列が変わっても同じ深さの段の Monaco を作り直さない。
         <FlowOriginPane
           key={`origin-${origin.depth}`}
+          id={paneIdOf(origin.depth)}
           className={collapsed.has(origin.depth) ? "is-collapsed" : undefined}
           depth={origin.depth}
           file={origin.file}
@@ -445,6 +458,7 @@ export function CodeViewer({
         path={file.path}
         label={PANE_LABELS.target}
         collapsed={targetCollapsed}
+        controls={paneIdOf(targetDepth)}
         onToggle={toggle}
       />
       {targetPane}

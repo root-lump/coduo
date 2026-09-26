@@ -23,7 +23,6 @@ export { normalizeAgentReviewError } from "./application/normalizeError";
 export { jumpLabel } from "./application/relation";
 export {
   originScopesOf,
-  parentScopeOf,
   scopeOf,
   type JumpScope,
   type OriginScope,

@@ -36,15 +36,6 @@ export function scopeOf(
   };
 }
 
-/** 今いる範囲の 1 つ上（開いているジャンプの参照元がある範囲）。深さ 0 では undefined。 */
-export function parentScopeOf(
-  step: ReviewStep | undefined,
-  path: CodeJump[],
-): JumpScope | undefined {
-  if (path.length === 0) return undefined;
-  return scopeOf(step, path.slice(0, -1));
-}
-
 export type OriginScope = {
   /** この段の深さ。0 はステップの対象範囲。 */
   depth: number;

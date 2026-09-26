@@ -65,8 +65,8 @@ const jumpView: JumpView = {
   rootLabel: "step.rs",
 };
 
-function renderViewer(onOpenOriginJump = vi.fn()) {
-  render(
+function viewerOf(view: JumpView, onOpenOriginJump = vi.fn()) {
+  return (
     <CodeViewer
       annotations={[]}
       changedLines={[]}
@@ -84,11 +84,15 @@ function renderViewer(onOpenOriginJump = vi.fn()) {
       viewMode="code"
       jumps={[]}
       onOpenJump={vi.fn()}
-      jumpView={jumpView}
+      jumpView={view}
       onOpenOriginJump={onOpenOriginJump}
       onJumpBack={vi.fn()}
-    />,
+    />
   );
+}
+
+function renderViewer(onOpenOriginJump = vi.fn()) {
+  render(viewerOf(jumpView, onOpenOriginJump));
   return onOpenOriginJump;
 }
 
@@ -122,6 +126,60 @@ describe("CodeViewer の分割表示", () => {
     fireEvent.click(top!);
     expect(top?.getAttribute("aria-expanded")).toBe("true");
     expect(gridRows().split(" auto ")[1]).toBe("minmax(0, 45fr)");
+  });
+
+  it("ジャンプの列が縮んで下段になった深さは、畳んであっても最初の描画から展開で出す", () => {
+    const { rerender } = render(viewerOf(jumpView));
+    const middle = headers()[1]!;
+    fireEvent.click(middle);
+    expect(middle.getAttribute("aria-expanded")).toBe("false");
+
+    // 最上段から別のジャンプを開き直すと、深さ 1 が下段になる。
+    const third = jumpOf("j3", targetFile.path);
+    const shallowView: JumpView = {
+      ...jumpView,
+      path: [third],
+      origins: [{ ...jumpView.origins[0]!, from: third.from, jumps: [third] }],
+      kind: third.kind,
+    };
+    const targetBar = headers()[2]!;
+    // effect で直す前の描画も捕まえるため、属性の変化を全部記録する。
+    const observer = new MutationObserver(() => {});
+    observer.observe(targetBar, {
+      attributes: true,
+      attributeFilter: ["aria-expanded"],
+      attributeOldValue: true,
+    });
+    rerender(viewerOf(shallowView));
+    const expandedHistory = [
+      ...observer.takeRecords().map((record) => record.oldValue),
+      targetBar.getAttribute("aria-expanded"),
+    ];
+    observer.disconnect();
+
+    expect(headers().at(-1)).toBe(targetBar);
+    expect(expandedHistory).not.toContain("false");
+    expect(gridRows()).toBe(
+      "auto auto minmax(0, 45fr) auto minmax(0, 55fr)",
+    );
+  });
+
+  it("ヘッダーの aria-controls が段ごとに一意な id で折りたたむ本体を指す", () => {
+    renderViewer();
+    const controls = headers().map((header) =>
+      header.getAttribute("aria-controls"),
+    );
+    expect(new Set(controls).size).toBe(3);
+    for (const [index, id] of controls.entries()) {
+      const pane = document.getElementById(id!);
+      expect(pane).not.toBeNull();
+      expect(pane?.classList.contains("flow-pane-bar")).toBe(false);
+
+      fireEvent.click(headers()[index]!);
+      expect(pane?.classList.contains("is-collapsed")).toBe(true);
+      fireEvent.click(headers()[index]!);
+      expect(pane?.classList.contains("is-collapsed")).toBe(false);
+    }
   });
 
   it("描画しただけでは上段のジャンプを開かない", () => {
