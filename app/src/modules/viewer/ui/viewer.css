@@ -217,12 +217,15 @@
   height: 100%;
 }
 
-/* ジャンプを開いたとき。パンくず、上段（参照元）、下段（定義）を 45:55 で縦に並べる。
+/* ジャンプを開いたとき。パンくず、上段（参照元）、下段（定義）を縦に並べる。
+   行定義は CodeViewer の splitGridRows が段数と折りたたみから出して inline style で渡す。
    比率の調整は持たない。 */
 .code-viewer-split {
   isolation: isolate;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 45fr) auto minmax(0, 55fr);
+  /* 全段を畳むと fr の行が 0 になり、auto の行（パンくず・ヘッダー）が余りを吸って
+     縦に引き伸ばされる。余りは下に空けたまま、ヘッダーは上に詰める。 */
+  align-content: start;
 }
 
 .flow-path-bar {
@@ -304,16 +307,37 @@ button.flow-path-chip:hover {
   min-height: 0;
 }
 
+/* 畳んだ段。行の高さは grid が 0 にするので、ここでは絶対配置の中身（注釈レールなど）が
+   はみ出さないようにするだけ。Monaco を破棄しないよう display: none は使わない。 */
+.flow-pane.is-collapsed {
+  overflow: hidden;
+  visibility: hidden;
+}
+
 .flow-pane-bar {
+  appearance: none;
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 5px 14px;
+  border: 0;
   border-bottom: 1px solid var(--border-soft);
   background: var(--surface-raised);
   font-family: "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.flow-pane-bar:hover {
+  background: var(--surface-hover);
+}
+
+.flow-pane-bar:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: -2px;
 }
 
 .flow-pane-bar--target {
@@ -324,6 +348,17 @@ button.flow-path-chip:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 開閉の印。幅を揃えて、開閉でパスの位置が動かないようにする。 */
+.flow-pane-path::before {
+  content: "▾";
+  display: inline-block;
+  width: 1em;
+}
+
+.flow-pane-bar.is-collapsed .flow-pane-path::before {
+  content: "▸";
 }
 
 .flow-pane-role {

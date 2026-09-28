@@ -15,6 +15,7 @@ import type {
   JumpKind,
 } from "../../review";
 import type { ChangedLine, FileContent, FileReference } from "../../workspace";
+import type { SymbolLocation } from "../codeNavigation";
 import { languageFromPath } from "../language";
 import { CODUO_THEME } from "../monacoEnvironment";
 import {
@@ -23,12 +24,19 @@ import {
   type AnnotationRail,
 } from "./CodeAnnotationRail";
 import { SHARED_EDITOR_OPTIONS } from "./editorOptions";
+import { originRevealRange } from "./originReveal";
 import { useMonacoViewer } from "./useMonacoViewer";
 
 const NO_NAVIGATION_FILES: FileContent[] = [];
 const ignoreLocation = () => undefined;
 
 type FlowOriginPaneProps = {
+  /** この段の深さ。モデル URI を段ごとに分けるのに使う。 */
+  depth: number;
+  /** 段のヘッダーの aria-controls が指す id。 */
+  id: string;
+  /** 外から足すクラス（折りたたみの is-collapsed）。 */
+  className?: string;
   file: FileContent;
   /** 参照元の式。file 内の 1 行。 */
   from: CodeRange;
@@ -41,6 +49,8 @@ type FlowOriginPaneProps = {
   jumps: CodeJump[];
   /** 変更行。上段のファイルが表示中ファイルと同じときだけ非空。 */
   changedLines: ChangedLine[];
+  /** この段の定義の識別子（深さ 0 は無し）。下段と同じ定義の装飾を付ける。 */
+  anchor?: SymbolLocation;
   focusToken: number;
   onOpenJump(jump: CodeJump): void;
   /** 注釈レールの幅。下段と共有する。 */
@@ -52,6 +62,9 @@ type FlowOriginPaneProps = {
 };
 
 export function FlowOriginPane({
+  depth,
+  id,
+  className: extraClassName,
   file,
   from,
   kind,
@@ -59,6 +72,7 @@ export function FlowOriginPane({
   annotations,
   jumps,
   changedLines,
+  anchor,
   focusToken,
   onOpenJump,
   rail,
@@ -71,6 +85,10 @@ export function FlowOriginPane({
   const reveal = useMemo(
     () => ({ file: file.path, range: from }),
     [file.path, from],
+  );
+  const revealExtent = useMemo(
+    () => ({ file: file.path, range: originRevealRange(from, anchor) }),
+    [file.path, from, anchor],
   );
   const origin = useMemo(() => ({ from, kind }), [from, kind]);
   const {
@@ -86,6 +104,7 @@ export function FlowOriginPane({
     filePath: file.path,
     focus,
     reveal,
+    revealExtent,
     focusToken,
     navigationFiles: NO_NAVIGATION_FILES,
     symbolIndex: null,
@@ -93,7 +112,7 @@ export function FlowOriginPane({
     jumpTarget: undefined,
     jumpToken: 0,
     jumps,
-    definitionAnchor: undefined,
+    definitionAnchor: anchor,
     origin,
     onOpenJump,
   });
@@ -113,6 +132,7 @@ export function FlowOriginPane({
   });
   const className = [
     "code-viewer flow-pane flow-pane--origin",
+    extraClassName ?? "",
     showAnnotations ? "has-code-annotations" : "",
     showAnnotations && rail.isNarrow ? "is-narrow-annotations" : "",
     rail.isResizing ? "is-resizing" : "",
@@ -124,13 +144,14 @@ export function FlowOriginPane({
   } as CSSProperties;
 
   return (
-    <div className={className} style={style}>
+    <div id={id} className={className} style={style}>
       <div className="code-editor-surface">
         <Editor
           height="100%"
           // 下段と同じファイルを開くことがある。モデルを共有すると片方の unmount が
           // もう片方のモデルを破棄するので、上段専用の URI にする（差分エディタと同じ理由）。
-          path={`file://coduo-flow-origin/${file.path}`}
+          // 上段どうしも同じファイルを開きうるので、URI に深さを含めて段ごとに分ける。
+          path={`file://coduo-flow-origin-${depth}/${file.path}`}
           keepCurrentModel
           value={file.content}
           language={file.language || languageFromPath(file.path)}

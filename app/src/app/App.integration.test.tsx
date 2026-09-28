@@ -19,6 +19,8 @@ import type { AgentReviewResult } from "../modules/review";
 
 // Monaco は jsdom で動かないため、App レベルではファイルパスと表示モードだけ映す stub にする。
 vi.mock("../modules/viewer/ui/CodeViewer", () => ({
+  // useAppController が上段の数を絞るのに使う。実物を読むと Monaco が入るので値を写す。
+  MAX_VISIBLE_ORIGINS: 2,
   CodeViewer: (props: {
     file?: { path: string };
     viewMode: string;
@@ -31,65 +33,75 @@ vi.mock("../modules/viewer/ui/CodeViewer", () => ({
     annotations: { id: string }[];
     jumpView?: {
       path: { id: string }[];
-      originAnnotations: { id: string }[];
-      originJumps: { id: string }[];
-      originChangedLines: unknown[];
+      origins: {
+        depth: number;
+        annotations: { id: string }[];
+        jumps: { id: string }[];
+        changedLines: unknown[];
+      }[];
     };
     onOpenJump(jump: { id: string }): void;
-    onOpenOriginJump(jump: { id: string }): void;
+    onOpenOriginJump(depth: number, jump: { id: string }): void;
     onJumpBack(depth: number): void;
-  }) => (
-    <div
-      data-testid="code-viewer"
-      data-view-mode={props.viewMode}
-      data-side-by-side={String(props.renderSideBySide)}
-      data-jump-line={props.jumpTarget?.range.startLine}
-      data-viewer-file={props.file?.path}
-      data-jump-count={props.jumps.length}
-      data-jump-depth={props.jumpView?.path.length ?? 0}
-      data-jump-id={props.jumpView?.path.at(-1)?.id}
-      data-origin-annotation-ids={props.jumpView?.originAnnotations
-        .map((annotation) => annotation.id)
-        .join(",")}
-      data-origin-jump-ids={props.jumpView?.originJumps
-        .map((jump) => jump.id)
-        .join(",")}
-      data-origin-changed-lines={props.jumpView?.originChangedLines.length}
-      data-annotation-count={props.annotations.length}
-      data-annotation-ids={props.annotations.map((annotation) => annotation.id).join(",")}
-      data-changed-lines={props.changedLines.length}
-      data-has-base-text={String(props.baseText !== undefined)}
-    >
-      {props.file?.path ?? "(ファイル未選択)"}
-      {/* 注釈カードのファイルリンクの代わり。同じ経路で開けることを見る。 */}
-      <button
-        type="button"
-        onClick={() => props.onOpenFileReference({ file: "assets/logo.png" })}
+  }) => {
+    // 属性とボタンは下段の直上の上段（末尾）を映す。
+    const lastOrigin = props.jumpView?.origins.at(-1);
+    return (
+      <div
+        data-testid="code-viewer"
+        data-view-mode={props.viewMode}
+        data-side-by-side={String(props.renderSideBySide)}
+        data-jump-line={props.jumpTarget?.range.startLine}
+        data-viewer-file={props.file?.path}
+        data-jump-count={props.jumps.length}
+        data-jump-depth={props.jumpView?.path.length ?? 0}
+        data-jump-id={props.jumpView?.path.at(-1)?.id}
+        data-origin-depths={props.jumpView?.origins
+          .map((origin) => origin.depth)
+          .join(",")}
+        data-origin-annotation-ids={lastOrigin?.annotations
+          .map((annotation) => annotation.id)
+          .join(",")}
+        data-origin-jump-ids={lastOrigin?.jumps.map((jump) => jump.id).join(",")}
+        data-origin-changed-lines={lastOrigin?.changedLines.length}
+        data-annotation-count={props.annotations.length}
+        data-annotation-ids={props.annotations.map((annotation) => annotation.id).join(",")}
+        data-changed-lines={props.changedLines.length}
+        data-has-base-text={String(props.baseText !== undefined)}
       >
-        注釈からロゴを開く
-      </button>
-      {/* ジャンプの式をクリックする代わり。 */}
-      <button
-        type="button"
-        onClick={() => props.jumps[0] && props.onOpenJump(props.jumps[0])}
-      >
-        最初のジャンプを開く
-      </button>
-      {/* 上段（親の範囲）のジャンプの式をクリックする代わり。 */}
-      <button
-        type="button"
-        onClick={() => {
-          const last = props.jumpView?.originJumps.at(-1);
-          if (last) props.onOpenOriginJump(last);
-        }}
-      >
-        上段の最後のジャンプを開く
-      </button>
-      <button type="button" onClick={() => props.onJumpBack(0)}>
-        ジャンプを閉じる
-      </button>
-    </div>
-  ),
+        {props.file?.path ?? "(ファイル未選択)"}
+        {/* 注釈カードのファイルリンクの代わり。同じ経路で開けることを見る。 */}
+        <button
+          type="button"
+          onClick={() => props.onOpenFileReference({ file: "assets/logo.png" })}
+        >
+          注釈からロゴを開く
+        </button>
+        {/* ジャンプの式をクリックする代わり。 */}
+        <button
+          type="button"
+          onClick={() => props.jumps[0] && props.onOpenJump(props.jumps[0])}
+        >
+          最初のジャンプを開く
+        </button>
+        {/* 上段（親の範囲）のジャンプの式をクリックする代わり。 */}
+        <button
+          type="button"
+          onClick={() => {
+            const last = lastOrigin?.jumps.at(-1);
+            if (lastOrigin && last) {
+              props.onOpenOriginJump(lastOrigin.depth, last);
+            }
+          }}
+        >
+          上段の最後のジャンプを開く
+        </button>
+        <button type="button" onClick={() => props.onJumpBack(0)}>
+          ジャンプを閉じる
+        </button>
+      </div>
+    );
+  },
 }));
 
 const testSource = {
@@ -519,6 +531,7 @@ describe("ジャンプ（識別子から定義へ）", () => {
     });
     expect(viewer.getAttribute("data-jump-depth")).toBe("1");
     expect(viewer.getAttribute("data-jump-id")).toBe("step-1-jump-1");
+    expect(viewer.getAttribute("data-origin-depths")).toBe("0");
     expect(viewer.getAttribute("data-origin-jump-ids")).toBe(
       "step-1-jump-1,step-1-jump-2",
     );
@@ -544,6 +557,7 @@ describe("ジャンプ（識別子から定義へ）", () => {
     });
     expect(viewer.getAttribute("data-jump-depth")).toBe("2");
     expect(viewer.getAttribute("data-jump-id")).toBe("step-1-jump-1-jump-1");
+    expect(viewer.getAttribute("data-origin-depths")).toBe("0,1");
     expect(viewer.getAttribute("data-origin-jump-ids")).toBe(
       "step-1-jump-1-jump-1,step-1-jump-1-jump-2",
     );
@@ -555,6 +569,55 @@ describe("ジャンプ（識別子から定義へ）", () => {
     });
     expect(viewer.getAttribute("data-jump-depth")).toBe("2");
     expect(viewer.getAttribute("data-jump-id")).toBe("step-1-jump-1-jump-2");
+  });
+
+  it("深さ 3 では最も古い段が画面から外れる", async () => {
+    // step-1 → step-1-jump-1 → step-1-jump-1-jump-1 → さらに 1 段の入れ子。
+    const jump = (id: string, jumps?: AgentReviewResult["tour"]["steps"][0]["jumps"]) => ({
+      id,
+      kind: "callee" as const,
+      symbol: "answer",
+      from: { startLine: 1, startColumn: 8, endLine: 1, endColumn: 14 },
+      to: { file: "src/lib.rs", range: { startLine: 1, endLine: 3 } },
+      explanation: `${id} の定義。`,
+      jumps,
+    });
+    const [firstStep, ...restSteps] = fixtures.reviewResult.tour.steps;
+    const deepTour: AgentReviewResult = {
+      ...fixtures.reviewResult,
+      tour: {
+        ...fixtures.reviewResult.tour,
+        steps: [
+          {
+            ...firstStep,
+            jumps: [
+              jump("step-1-jump-1", [
+                jump("step-1-jump-1-jump-1", [
+                  jump("step-1-jump-1-jump-1-jump-1"),
+                ]),
+              ]),
+            ],
+          },
+          ...restSteps,
+        ],
+      },
+    };
+    fakeAgentGateway.review.mockResolvedValue(deepTour);
+    renderApp();
+    await screen.findByText("デモリポジトリのレビュー");
+    const viewer = screen.getByTestId("code-viewer");
+    await waitFor(() => expect(viewer.getAttribute("data-jump-count")).toBe("1"));
+
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "最初のジャンプを開く" }));
+      });
+    }
+    expect(viewer.getAttribute("data-jump-depth")).toBe("3");
+    expect(viewer.getAttribute("data-origin-depths")).toBe("1,2");
+    expect(viewer.getAttribute("data-jump-id")).toBe(
+      "step-1-jump-1-jump-1-jump-1",
+    );
   });
 
   it("ジャンプの無いツアーでは印が出ない", async () => {
