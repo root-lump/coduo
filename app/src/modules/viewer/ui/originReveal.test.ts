@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { fitsInViewport, originRevealRange } from "./originReveal";
+import {
+  chooseRevealRange,
+  fitsInViewport,
+  originRevealRange,
+} from "./originReveal";
 
 describe("originRevealRange", () => {
   const from = { startLine: 60, startColumn: 19, endLine: 60, endColumn: 26 };
@@ -46,5 +50,26 @@ describe("fitsInViewport", () => {
 
   it("行の高さが 0 以下なら収まらない扱いにする", () => {
     expect(fitsInViewport(range, 230, 0)).toBe(false);
+  });
+});
+
+describe("chooseRevealRange", () => {
+  const extent = { startLineNumber: 52, endLineNumber: 60 };
+  const selection = { startLineNumber: 60, endLineNumber: 60 };
+
+  it("高さが 0 なら、レイアウト確定後に判定し直せるよう extent を選ぶ", () => {
+    expect(chooseRevealRange(extent, selection, 0, 23)).toBe(extent);
+  });
+
+  it("高さが 1 行に満たない（マウント直後の段）なら extent を選ぶ", () => {
+    expect(chooseRevealRange(extent, selection, 5, 23)).toBe(extent);
+  });
+
+  it("extent が収まれば extent を選ぶ", () => {
+    expect(chooseRevealRange(extent, selection, 314, 23)).toBe(extent);
+  });
+
+  it("extent が収まらなければ selection を選ぶ", () => {
+    expect(chooseRevealRange(extent, selection, 189, 23)).toBe(selection);
   });
 });

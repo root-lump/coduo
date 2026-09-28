@@ -45,3 +45,24 @@ export function fitsInViewport(
   const visibleLines = Math.floor(viewportHeight / lineHeight);
   return range.endLineNumber - range.startLineNumber + 1 <= visibleLines;
 }
+
+/**
+ * 上段が中央に出す範囲。extent（定義から参照元まで）が収まればそれを、収まらなければ
+ * 参照元（selection）だけを出す。収まらない範囲を中央に出すと両端とも画面外になり、
+ * 線が 1 本も引けなくなるため。
+ * 高さが 1 行にも満たないときは、段のレイアウトが確定していない（マウント直後の段は
+ * 数 px しかない）とみなして extent を返す。確定後の出し直しでこの関数を呼び直せば
+ * 正しく判定し直せるが、ここで selection に倒すと、その出し直しは selection が
+ * 見えている時点で止まり、extent に戻らない。
+ */
+export function chooseRevealRange<
+  T extends Pick<IRange, "startLineNumber" | "endLineNumber">,
+>(
+  extent: T,
+  selection: T,
+  viewportHeight: number,
+  lineHeight: number,
+): T {
+  if (lineHeight > 0 && viewportHeight < lineHeight) return extent;
+  return fitsInViewport(extent, viewportHeight, lineHeight) ? extent : selection;
+}
