@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // 分割表示の段のヘッダーと折りたたみを実 DOM で確かめる。Monaco は jsdom で
 // 動かないので描画しない（ヘッダーと grid の行定義は Monaco に依存しない）。
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CodeJump } from "../../review";
 import type { FileContent } from "../../workspace";
 
@@ -65,12 +65,16 @@ const jumpView: JumpView = {
   rootLabel: "step.rs",
 };
 
-function viewerOf(view: JumpView, onOpenOriginJump = vi.fn()) {
+function viewerOf(
+  view: JumpView | undefined,
+  onOpenOriginJump = vi.fn(),
+  file = targetFile,
+) {
   return (
     <CodeViewer
       annotations={[]}
       changedLines={[]}
-      file={targetFile}
+      file={file}
       focus={second.to}
       focusToken={1}
       isLoading={false}
@@ -159,8 +163,9 @@ describe("CodeViewer の分割表示", () => {
 
     expect(headers().at(-1)).toBe(targetBar);
     expect(expandedHistory).not.toContain("false");
+    // 外れた深さ 1 は縮み終わるまで 0fr で残り、下段は展開のまま 55fr で出る。
     expect(gridRows()).toBe(
-      "auto auto minmax(0, 45fr) auto minmax(0, 55fr)",
+      "auto auto minmax(0, 45fr) auto minmax(0, 0fr) auto minmax(0, 55fr)",
     );
   });
 
@@ -185,5 +190,95 @@ describe("CodeViewer の分割表示", () => {
   it("描画しただけでは上段のジャンプを開かない", () => {
     const onOpenOriginJump = renderViewer();
     expect(onOpenOriginJump).not.toHaveBeenCalled();
+  });
+});
+
+describe("CodeViewer の段の入退場", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // jumpView から最下層のジャンプを 1 つ戻した列（上段は深さ 0 だけ）。
+  const oneOriginView: JumpView = {
+    ...jumpView,
+    path: [first],
+    origins: [jumpView.origins[0]!],
+    kind: first.kind,
+  };
+  const veil = () => document.querySelector(".flow-target-veil");
+
+  it("増えた段は最終的に 45fr で描かれ、ヘッダーに is-entering が残らない", () => {
+    const { rerender } = render(viewerOf(oneOriginView));
+    rerender(viewerOf(jumpView));
+
+    expect(gridRows()).toBe(
+      "auto auto minmax(0, 45fr) auto minmax(0, 45fr) auto minmax(0, 55fr)",
+    );
+    expect(headers()).toHaveLength(3);
+    expect(
+      headers().some((header) => header.classList.contains("is-entering")),
+    ).toBe(false);
+  });
+
+  it("減った段は is-leaving で 0fr のまま残り、240ms 後に描画から外れる", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(viewerOf(jumpView));
+    rerender(viewerOf(oneOriginView));
+
+    const leaving = headers()[1]!;
+    expect(leaving.classList.contains("is-leaving")).toBe(true);
+    expect(
+      leaving.querySelector(".flow-pane-path")?.textContent,
+    ).toBe(middleFile.path);
+    expect(gridRows()).toBe(
+      "auto auto minmax(0, 45fr) auto minmax(0, 0fr) auto minmax(0, 55fr)",
+    );
+    // 退場中の段と下段は同じ深さ 1 になるが、id は衝突させない。
+    const ids = headers().map((header) => header.getAttribute("aria-controls"));
+    expect(new Set(ids).size).toBe(ids.length);
+
+    act(() => {
+      vi.advanceTimersByTime(240);
+    });
+    expect(headers()).toHaveLength(2);
+    expect(document.querySelector(".is-leaving")).toBeNull();
+    expect(gridRows()).toBe("auto auto minmax(0, 45fr) auto minmax(0, 55fr)");
+  });
+
+  it("jumpView が消えても退場中は分割表示が残り、240ms 後に 1 面に戻る", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(viewerOf(jumpView));
+    rerender(viewerOf(undefined));
+
+    const shell = screen.getByTestId("code-viewer");
+    expect(shell.classList.contains("code-viewer-split")).toBe(true);
+    expect(
+      headers()
+        .slice(0, 2)
+        .every((header) => header.classList.contains("is-leaving")),
+    ).toBe(true);
+    expect(gridRows()).toBe(
+      "auto auto minmax(0, 0fr) auto minmax(0, 0fr) auto minmax(0, 55fr)",
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(240);
+    });
+    expect(shell.classList.contains("code-viewer-split")).toBe(false);
+    expect(headers()).toHaveLength(0);
+    expect(gridRows()).toBe("");
+  });
+
+  it("下段のファイルが変わると幕を作り直す", () => {
+    const { rerender } = render(viewerOf(jumpView));
+    const before = veil();
+    expect(before).not.toBeNull();
+
+    rerender(viewerOf(jumpView));
+    expect(veil()).toBe(before);
+
+    rerender(viewerOf(jumpView, vi.fn(), fileOf("src/other.rs")));
+    expect(veil()).not.toBeNull();
+    expect(veil()).not.toBe(before);
   });
 });
