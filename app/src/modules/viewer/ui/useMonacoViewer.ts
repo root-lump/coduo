@@ -67,6 +67,11 @@ type UseMonacoViewerArgs = {
    * 装飾しつつ、参照元の式（reveal）を中央に出すために分ける。
    */
   reveal?: CodeTarget;
+  /**
+   * スクロールで画面に出す範囲。未指定なら reveal（または focus）。選択は reveal のままにして、
+   * 中段のように定義と参照元の両方を見せたいときに、より広い範囲を渡す。
+   */
+  revealExtent?: CodeTarget;
   focusToken: number;
   navigationFiles: FileContent[];
   symbolIndex: SymbolIndex | null;
@@ -104,6 +109,7 @@ export function useMonacoViewer({
   filePath,
   focus,
   reveal,
+  revealExtent,
   focusToken,
   navigationFiles,
   symbolIndex,
@@ -411,22 +417,27 @@ export function useMonacoViewer({
   useEffect(() => {
     applyDecorations();
   }, [applyDecorations, filePath, focusToken, mountToken]);
-  const revealTarget = reveal ?? focus;
+  const selectionTarget = reveal ?? focus;
+  const revealTarget = revealExtent ?? selectionTarget;
   useEffect(() => {
     const editorInstance = editorRef.current;
     const model = editorInstance?.getModel();
-    const range = model
-      ? focusRange(revealTarget, model.getLineCount())
-      : undefined;
-    if (!editorInstance || !range) return;
-    editorInstance.setSelection(range);
+    const lineCount = model?.getLineCount();
+    const selection =
+      lineCount === undefined
+        ? undefined
+        : focusRange(selectionTarget, lineCount);
+    const range =
+      lineCount === undefined ? undefined : focusRange(revealTarget, lineCount);
+    if (!editorInstance || !selection || !range) return;
+    editorInstance.setSelection(selection);
     const settled = revealRangeInCenterSettled(
       editorInstance,
       range,
       monaco.editor.ScrollType.Smooth,
     );
     return () => settled.dispose();
-  }, [filePath, revealTarget, focusToken, mountToken]);
+  }, [filePath, selectionTarget, revealTarget, focusToken, mountToken]);
   useEffect(
     () => () => {
       editorListenersRef.current?.dispose();

@@ -24,6 +24,7 @@ import {
   type AnnotationRail,
 } from "./CodeAnnotationRail";
 import { SHARED_EDITOR_OPTIONS } from "./editorOptions";
+import { originRevealRange } from "./originReveal";
 import { useMonacoViewer } from "./useMonacoViewer";
 
 const NO_NAVIGATION_FILES: FileContent[] = [];
@@ -85,6 +86,10 @@ export function FlowOriginPane({
     () => ({ file: file.path, range: from }),
     [file.path, from],
   );
+  const revealExtent = useMemo(
+    () => ({ file: file.path, range: originRevealRange(from, anchor) }),
+    [file.path, from, anchor],
+  );
   const origin = useMemo(() => ({ from, kind }), [from, kind]);
   const {
     anchors,
@@ -99,6 +104,7 @@ export function FlowOriginPane({
     filePath: file.path,
     focus,
     reveal,
+    revealExtent,
     focusToken,
     navigationFiles: NO_NAVIGATION_FILES,
     symbolIndex: null,

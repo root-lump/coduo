@@ -223,6 +223,9 @@
 .code-viewer-split {
   isolation: isolate;
   display: grid;
+  /* 全段を畳むと fr の行が 0 になり、auto の行（パンくず・ヘッダー）が余りを吸って
+     縦に引き伸ばされる。余りは下に空けたまま、ヘッダーは上に詰める。 */
+  align-content: start;
 }
 
 .flow-path-bar {
