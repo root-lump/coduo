@@ -269,6 +269,51 @@ describe("CodeViewer の段の入退場", () => {
     expect(gridRows()).toBe("");
   });
 
+  it("3 段目のジャンプでは、退場する段を最初の描画で元の高さに残し、入場と同時に縮める", () => {
+    const third = jumpOf("j3", "src/leaf.rs");
+    const deepView: JumpView = {
+      ...jumpView,
+      path: [first, second, third],
+      origins: [
+        jumpView.origins[1]!,
+        {
+          depth: 2,
+          file: targetFile,
+          from: third.from,
+          kind: third.kind,
+          focus: second.to,
+          annotations: [],
+          jumps: [third],
+          changedLines: [],
+        },
+      ],
+      kind: third.kind,
+    };
+    const { rerender } = render(viewerOf(jumpView));
+    const shell = screen.getByTestId("code-viewer");
+    // jsdom では layout effect の再描画が同期に流れるので、確定した行定義を全部記録する。
+    const observer = new MutationObserver(() => {});
+    observer.observe(shell, {
+      attributes: true,
+      attributeFilter: ["style"],
+      attributeOldValue: true,
+    });
+    rerender(viewerOf(deepView, vi.fn(), fileOf("src/leaf.rs")));
+    const committedRows = observer
+      .takeRecords()
+      .map((record) => record.oldValue?.match(/grid-template-rows: ([^;]*)/)?.[1]);
+    observer.disconnect();
+
+    // 入場中の描画: 深さ 0（退場）は 45fr のまま、深さ 2（入場）だけ 0fr。
+    expect(committedRows).toContain(
+      "auto auto minmax(0, 45fr) auto minmax(0, 45fr) auto minmax(0, 0fr) auto minmax(0, 55fr)",
+    );
+    // 入場が確定した描画: track 数は同じまま、深さ 0 が 0fr、深さ 2 が 45fr。
+    expect(gridRows()).toBe(
+      "auto auto minmax(0, 0fr) auto minmax(0, 45fr) auto minmax(0, 45fr) auto minmax(0, 55fr)",
+    );
+  });
+
   it("下段のファイルが変わると幕を作り直す", () => {
     const { rerender } = render(viewerOf(jumpView));
     const before = veil();
