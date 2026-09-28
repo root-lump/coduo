@@ -5,7 +5,7 @@ vi.mock("../monacoEnvironment", () => ({
   monaco: { editor: { ScrollType: { Smooth: 0 } } },
 }));
 
-import { shouldRenderCodeAnnotations } from "./CodeViewer";
+import { shouldRenderCodeAnnotations, splitGridRows } from "./CodeViewer";
 import { subscribeToAnnotationEvents } from "./useMonacoViewer";
 
 describe("CodeViewer annotation lifecycle", () => {
@@ -61,5 +61,25 @@ describe("CodeViewer annotation lifecycle", () => {
     subscription.dispose();
     expect(onUpdate).toHaveBeenCalledTimes(3);
     disposals.forEach((dispose) => expect(dispose).toHaveBeenCalledOnce());
+  });
+});
+
+describe("splitGridRows", () => {
+  it("matches the fixed two-pane layout when nothing is collapsed", () => {
+    expect(splitGridRows(2, new Set())).toBe(
+      "auto auto minmax(0, 45fr) auto minmax(0, 55fr)",
+    );
+  });
+
+  it("gives a collapsed pane only its header", () => {
+    expect(splitGridRows(3, new Set([0]))).toBe(
+      "auto auto minmax(0, 0fr) auto minmax(0, 45fr) auto minmax(0, 55fr)",
+    );
+  });
+
+  it("collapses every pane", () => {
+    expect(splitGridRows(3, new Set([0, 1, 2]))).toBe(
+      "auto auto minmax(0, 0fr) auto minmax(0, 0fr) auto minmax(0, 0fr)",
+    );
   });
 });

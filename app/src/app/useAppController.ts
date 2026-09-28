@@ -1,7 +1,7 @@
 // アプリ全体のオーケストレーション。
 // module 間をまたぐ配線（snapshot の自動展開・Tour の自動読み込み・
 // レビューのフォーカス追従）を持ち、App.tsx はこの controller の結果を描画するだけにする。
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CodeJump,
   CodeTarget,
@@ -9,7 +9,7 @@ import type {
   ReviewRequest,
 } from "../modules/review";
 import {
-  parentScopeOf,
+  originScopesOf,
   scopeOf,
   useAgentReview,
   useReviewController,
@@ -25,7 +25,11 @@ import {
   type SymbolLocation,
   type ViewMode,
 } from "../modules/viewer";
-import type { JumpView } from "../modules/viewer/ui/CodeViewer";
+import {
+  MAX_VISIBLE_ORIGINS,
+  type JumpOriginView,
+  type JumpView,
+} from "../modules/viewer/ui/CodeViewer";
 import { useZoom } from "../modules/zoom";
 import type { AppServices } from "./composition";
 import type { InitialView } from "./initialViewFor";
@@ -219,16 +223,10 @@ export function useAppController(
     () => scopeOf(review.currentStep, review.jumpPath),
     [review.currentStep, review.jumpPath],
   );
-  const parentScope = useMemo(
-    () => parentScopeOf(review.currentStep, review.jumpPath),
-    [review.currentStep, review.jumpPath],
-  );
-  const parentFocus: CodeTarget | undefined = useMemo(
+  const originScopes = useMemo(
     () =>
-      parentScope
-        ? { file: parentScope.file, range: parentScope.range }
-        : undefined,
-    [parentScope],
+      originScopesOf(review.currentStep, review.jumpPath, MAX_VISIBLE_ORIGINS),
+    [review.currentStep, review.jumpPath],
   );
   const activeJump: CodeJump | undefined =
     review.jumpPath[review.jumpPath.length - 1];
@@ -239,45 +237,75 @@ export function useAppController(
   const fileNamed = (path: string | undefined) =>
     path ? navigationFiles.find((candidate) => candidate.path === path) : undefined;
   const jumpTargetFile = fileNamed(activeJump?.to.file);
-  const jumpOriginFile = fileNamed(parentScope?.file);
   // 線の終点。飛び先の範囲内にある symbol の宣言（validate-tour が存在を保証する）。
-  const definitionAnchor: SymbolLocation | undefined =
-    activeJump && navigationIndex
-      ? definitionsFor(navigationIndex, activeJump.symbol).find(
-          (location) =>
-            location.path === activeJump.to.file &&
-            location.lineNumber >= activeJump.to.range.startLine &&
-            location.lineNumber <= activeJump.to.range.endLine,
-        )
-      : undefined;
-  // 上段には親の範囲の Tour の表示（フォーカス、注釈、ジャンプ）を保つ。変更行は
-  // workspace.activeFile のものしか無いので、上段がそのファイルのときだけ渡す。
+  const anchorFor = useCallback(
+    (jump: CodeJump): SymbolLocation | undefined =>
+      navigationIndex
+        ? definitionsFor(navigationIndex, jump.symbol).find(
+            (location) =>
+              location.path === jump.to.file &&
+              location.lineNumber >= jump.to.range.startLine &&
+              location.lineNumber <= jump.to.range.endLine,
+          )
+        : undefined,
+    [navigationIndex],
+  );
+  // 上段には各段の範囲の Tour の表示（フォーカス、注釈、ジャンプ）を保つ。変更行は
+  // workspace.activeFile のものしか無いので、その段がそのファイルのときだけ渡す。
+  // focus と changedLines は装飾の再適用を参照の同一性で決めるので、scope と同じく
+  // ジャンプの列や表示中ファイルが変わるときだけ作る。
+  const activeFilePath = workspace.activeFile?.path;
+  const activeChangedLines = workspace.activeChangedLines;
+  const origins = useMemo(
+    () =>
+      originScopes.flatMap(({ depth, scope, jump }): JumpOriginView[] => {
+        const file = navigationFiles.find(
+          (candidate) => candidate.path === scope.file,
+        );
+        if (!file) return [];
+        const parentJump = review.jumpPath[depth - 1];
+        return [
+          {
+            depth,
+            file,
+            from: jump.from,
+            kind: jump.kind,
+            focus: { file: scope.file, range: scope.range },
+            annotations: scope.annotations,
+            jumps: scope.jumps,
+            changedLines:
+              file.path === activeFilePath ? activeChangedLines : [],
+            anchor: parentJump ? anchorFor(parentJump) : undefined,
+          },
+        ];
+      }),
+    [
+      originScopes,
+      review.jumpPath,
+      navigationFiles,
+      activeFilePath,
+      activeChangedLines,
+      anchorFor,
+    ],
+  );
+  // 上段のファイルが 1 つでも引けなければ、今と同じく 1 面表示に戻す。
   const jumpView: JumpView | undefined =
     activeJump &&
     !review.isExploring &&
     jumpTargetFile &&
-    jumpOriginFile &&
-    parentScope &&
-    parentFocus
+    origins.length > 0 &&
+    origins.length === originScopes.length
       ? {
           path: review.jumpPath,
-          originFile: jumpOriginFile,
-          from: activeJump.from,
+          origins,
           kind: activeJump.kind,
-          originFocus: parentFocus,
-          originAnnotations: parentScope.annotations,
-          originJumps: parentScope.jumps,
-          originChangedLines:
-            jumpOriginFile.path === workspace.activeFile?.path
-              ? workspace.activeChangedLines
-              : [],
-          anchor: definitionAnchor,
+          anchor: anchorFor(activeJump),
           rootLabel: targetFile?.split("/").pop() ?? "",
         }
       : undefined;
-  // 上段（親の範囲）で選んだジャンプは、今の深さのジャンプと置き換える。
-  const openOriginJump = (jump: CodeJump) =>
-    review.openJumpAt(review.jumpPath.length - 1, jump);
+  // 深さ depth の上段で選んだジャンプは、それより深い段を捨ててから積む。
+  const openOriginJump = (depth: number, jump: CodeJump) =>
+    review.openJumpAt(depth, jump);
   const viewerFile = jumpView ? jumpTargetFile : workspace.activeFile;
   const viewerFocus: CodeTarget | undefined = jumpView
     ? activeJump?.to

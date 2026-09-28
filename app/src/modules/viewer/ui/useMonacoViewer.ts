@@ -34,6 +34,7 @@ import { monaco } from "../monacoEnvironment";
 import type { FileContent } from "../../workspace";
 import { createJumpTagWidget, type JumpTagWidget } from "./jumpTagWidget";
 import { installCodeNavigation } from "./monacoCodeNavigation";
+import { chooseRevealRange } from "./originReveal";
 import { revealRangeInCenterSettled } from "./revealRange";
 
 type Disposable = { dispose(): void };
@@ -67,6 +68,11 @@ type UseMonacoViewerArgs = {
    * 装飾しつつ、参照元の式（reveal）を中央に出すために分ける。
    */
   reveal?: CodeTarget;
+  /**
+   * スクロールで画面に出す範囲。未指定なら reveal（または focus）。選択は reveal のままにして、
+   * 中段のように定義と参照元の両方を見せたいときに、より広い範囲を渡す。
+   */
+  revealExtent?: CodeTarget;
   focusToken: number;
   navigationFiles: FileContent[];
   symbolIndex: SymbolIndex | null;
@@ -104,6 +110,7 @@ export function useMonacoViewer({
   filePath,
   focus,
   reveal,
+  revealExtent,
   focusToken,
   navigationFiles,
   symbolIndex,
@@ -411,22 +418,36 @@ export function useMonacoViewer({
   useEffect(() => {
     applyDecorations();
   }, [applyDecorations, filePath, focusToken, mountToken]);
-  const revealTarget = reveal ?? focus;
+  const selectionTarget = reveal ?? focus;
+  const revealTarget = revealExtent ?? selectionTarget;
   useEffect(() => {
     const editorInstance = editorRef.current;
     const model = editorInstance?.getModel();
-    const range = model
-      ? focusRange(revealTarget, model.getLineCount())
-      : undefined;
-    if (!editorInstance || !range) return;
-    editorInstance.setSelection(range);
+    const lineCount = model?.getLineCount();
+    const selection =
+      lineCount === undefined
+        ? undefined
+        : focusRange(selectionTarget, lineCount);
+    const extent =
+      lineCount === undefined ? undefined : focusRange(revealTarget, lineCount);
+    if (!editorInstance || !selection || !extent) return;
+    editorInstance.setSelection(selection);
+    // 収まるかは段の高さで決まり、段の高さはマウント直後から grid の確定まで変わる。
+    // effect の時点で 1 度だけ判定すると確定前の高さで決まってしまうので、
+    // 出すたびにそのときの高さで選び直す。
     const settled = revealRangeInCenterSettled(
       editorInstance,
-      range,
+      (target) =>
+        chooseRevealRange(
+          extent,
+          selection,
+          target.getLayoutInfo().height,
+          target.getOption(monaco.editor.EditorOption.lineHeight),
+        ),
       monaco.editor.ScrollType.Smooth,
     );
     return () => settled.dispose();
-  }, [filePath, revealTarget, focusToken, mountToken]);
+  }, [filePath, selectionTarget, revealTarget, focusToken, mountToken]);
   useEffect(
     () => () => {
       editorListenersRef.current?.dispose();

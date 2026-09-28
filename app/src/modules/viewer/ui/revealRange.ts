@@ -25,12 +25,18 @@ function isLineSettled(editorInstance: editor.ICodeEditor, line: number) {
   });
 }
 
+/**
+ * 範囲を中央に出し、レイアウトが落ち着くまで位置を保つ。
+ * 出す範囲はエディタの大きさで変わりうる（収まるかで出す範囲を選ぶ呼び出し元がある）ので、
+ * 固定の範囲ではなく resolveRange を受け取り、初回と出し直しのたびにそのときの
+ * エディタで範囲を決め直す。
+ */
 export function revealRangeInCenterSettled(
   editorInstance: editor.ICodeEditor,
-  range: IRange,
+  resolveRange: (editorInstance: editor.ICodeEditor) => IRange,
   scrollType: editor.ScrollType,
 ): Disposable {
-  editorInstance.revealRangeInCenter(range, scrollType);
+  editorInstance.revealRangeInCenter(resolveRange(editorInstance), scrollType);
   const startedAt = performance.now();
   let reveals = 0;
   let done = false;
@@ -44,6 +50,7 @@ export function revealRangeInCenterSettled(
       finish();
       return;
     }
+    const range = resolveRange(editorInstance);
     if (isLineSettled(editorInstance, range.startLineNumber)) return;
     // ファイル末尾付近など中央に出せない範囲は、出し直してもスクロール位置が変わらない。
     // その場合はこれ以上やることが無いので打ち切る（reveal がレイアウト変更を誘発しても
