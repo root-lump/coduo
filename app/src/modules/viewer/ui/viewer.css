@@ -228,6 +228,13 @@
   align-content: start;
 }
 
+/* 段の伸縮。行定義は CodeViewer が inline style で変えるので、値の補間だけをここで持つ。
+   track 数が変わるジャンプでは補間されないため、CodeViewer が増減する段を一度 0fr で
+   描いてから本来の高さにする（paneTransition.ts の PANE_TRANSITION_MS と同じ長さ）。 */
+.code-viewer-split {
+  transition: grid-template-rows 240ms ease;
+}
+
 .flow-path-bar {
   display: flex;
   align-items: center;
@@ -308,10 +315,18 @@ button.flow-path-chip:hover {
 }
 
 /* 畳んだ段。行の高さは grid が 0 にするので、ここでは絶対配置の中身（注釈レールなど）が
-   はみ出さないようにするだけ。Monaco を破棄しないよう display: none は使わない。 */
+   はみ出さないようにするだけ。Monaco を破棄しないよう display: none は使わない。
+   visibility は行が縮み終わってから切り替え、縮む間は中身を見せる。展開は遅延なしで
+   即時に見せる（遅延はこの規則にだけ書くので、外れる側には掛からない）。 */
 .flow-pane.is-collapsed {
   overflow: hidden;
   visibility: hidden;
+  transition: visibility 0s linear 240ms;
+}
+
+/* 退場中の段。縮む間だけ中身（注釈レールなど）がはみ出さないようにする。 */
+.flow-pane.is-leaving {
+  overflow: hidden;
 }
 
 .flow-pane-bar {
@@ -329,6 +344,26 @@ button.flow-path-chip:hover {
   color: var(--text);
   text-align: left;
   cursor: pointer;
+  /* grid の auto 行は補間できないので、ボタン自身の高さを transition させる。
+     32px はヘッダーの自然な高さ（padding 5px × 2 + 行高 + 罫線）より少し大きい値。 */
+  max-height: 32px;
+  overflow: hidden;
+  transition:
+    max-height 240ms ease,
+    padding 240ms ease,
+    border-bottom-width 240ms ease;
+}
+
+.flow-pane-bar.is-entering,
+.flow-pane-bar.is-leaving {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom-width: 0;
+}
+
+.flow-pane-bar.is-leaving {
+  pointer-events: none;
 }
 
 .flow-pane-bar:hover {
@@ -342,6 +377,26 @@ button.flow-path-chip:hover {
 
 .flow-pane-bar--target {
   border-top: 1px solid var(--border);
+}
+
+/* 下段の差し替えを見せる幕。CodeViewer が下段の識別（深さとファイル）が変わるたびに
+   作り直して再生する。色は Monaco の editor.background（#0d1017）と同じ --surface。 */
+.flow-target-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: var(--surface);
+  pointer-events: none;
+  animation: flow-target-veil 240ms ease-out forwards;
+}
+
+@keyframes flow-target-veil {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 .flow-pane-path {
