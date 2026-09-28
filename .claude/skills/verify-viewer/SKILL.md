@@ -60,3 +60,4 @@ annotation の範囲はステップの範囲の内側に収める。外に出る
 | 起動直後に「説明はまだ生成されていません」エラー | payload に Tour が無い。手順 2 を省略しない |
 | 変更したはずの挙動が反映されない | `pnpm template` 未実行で古い template を embed している。再生成してから embed し直す |
 | スクリーンショットでエディタが 1 行しか見えない | 読み込み直後の描画待ち。スクロールか wait 後に撮り直す |
+| 手順 1 の収集が `totalSourceBytes` の上限（8MB）超過で止まる | `template.html` に未コミット変更があると、その unified diff が `patches` として 7MB 超載る。`--include` / `--exclude-glob` は本文にしか効かず patch は減らない。収集元を `--diff <リポジトリルート>/app --exclude-glob pnpm-lock.yaml` に狭めて撮り（`pnpm-lock.yaml` は本文が大きいだけで確認に要らない）、Tour の `path` は `app/src/...` ではなく `src/...` 始まりで書く（payload のパスは収集元からの相対になる） |
