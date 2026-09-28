@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { originRevealRange } from "./originReveal";
+import { fitsInViewport, originRevealRange } from "./originReveal";
 
 describe("originRevealRange", () => {
   const from = { startLine: 60, startColumn: 19, endLine: 60, endColumn: 26 };
@@ -26,5 +26,25 @@ describe("originRevealRange", () => {
       endLine: 80,
       endColumn: 9,
     });
+  });
+});
+
+describe("fitsInViewport", () => {
+  const range = { startLineNumber: 52, endLineNumber: 61 };
+
+  it("範囲の行数が可視行数以下なら収まる", () => {
+    expect(fitsInViewport(range, 230, 23)).toBe(true);
+  });
+
+  it("範囲の行数が可視行数を超えれば収まらない", () => {
+    expect(fitsInViewport(range, 229, 23)).toBe(false);
+  });
+
+  it("高さが 0（マウント直後）なら収まらない扱いにする", () => {
+    expect(fitsInViewport(range, 0, 23)).toBe(false);
+  });
+
+  it("行の高さが 0 以下なら収まらない扱いにする", () => {
+    expect(fitsInViewport(range, 230, 0)).toBe(false);
   });
 });

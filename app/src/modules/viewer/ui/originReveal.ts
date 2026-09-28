@@ -1,3 +1,4 @@
+import type { IRange } from "monaco-editor";
 import type { CodeRange } from "../../review";
 import type { SymbolLocation } from "../codeNavigation";
 
@@ -28,4 +29,19 @@ export function originRevealRange(
     endLine: last.endLine,
     endColumn: last.endColumn,
   };
+}
+
+/**
+ * 行範囲がペインの高さに収まるか。
+ * Monaco の Center 系 reveal は範囲の中点を中央に置くだけで、収まらない範囲は両端とも
+ * 画面外に出る。高さが取れない（マウント直後で 0）ときは収まらない扱いにする。
+ */
+export function fitsInViewport(
+  range: Pick<IRange, "startLineNumber" | "endLineNumber">,
+  viewportHeight: number,
+  lineHeight: number,
+): boolean {
+  if (lineHeight <= 0) return false;
+  const visibleLines = Math.floor(viewportHeight / lineHeight);
+  return range.endLineNumber - range.startLineNumber + 1 <= visibleLines;
 }

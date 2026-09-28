@@ -34,6 +34,7 @@ import { monaco } from "../monacoEnvironment";
 import type { FileContent } from "../../workspace";
 import { createJumpTagWidget, type JumpTagWidget } from "./jumpTagWidget";
 import { installCodeNavigation } from "./monacoCodeNavigation";
+import { fitsInViewport } from "./originReveal";
 import { revealRangeInCenterSettled } from "./revealRange";
 
 type Disposable = { dispose(): void };
@@ -427,10 +428,19 @@ export function useMonacoViewer({
       lineCount === undefined
         ? undefined
         : focusRange(selectionTarget, lineCount);
-    const range =
+    const extent =
       lineCount === undefined ? undefined : focusRange(revealTarget, lineCount);
-    if (!editorInstance || !selection || !range) return;
+    if (!editorInstance || !selection || !extent) return;
     editorInstance.setSelection(selection);
+    // 収まらない範囲を中央に出すと両端とも画面外になり、線が 1 本も引けなくなる。
+    // そのときは参照元（selection）だけを中央に出して、下の段への線を残す。
+    const range = fitsInViewport(
+      extent,
+      editorInstance.getLayoutInfo().height,
+      editorInstance.getOption(monaco.editor.EditorOption.lineHeight),
+    )
+      ? extent
+      : selection;
     const settled = revealRangeInCenterSettled(
       editorInstance,
       range,
