@@ -470,6 +470,13 @@ export function CodeViewer({
   // 折りたたみ集合を見ない（同じ深さの下段の折りたたみを拾わないため）。
   const originShrunk = (depth: number) =>
     originTransitionOf(depth) !== undefined || collapsed.has(depth);
+  // 入場と退場が同じ描画で起きる（3 段目のジャンプ）と track 数が変わり、grid は
+  // 行定義を補間せずに切り替える。入場中の描画では退場中の段を直前の高さのまま描き、
+  // 入場が確定した再描画（track 数が同じ）で 0fr に落として、伸縮を同時に補間させる。
+  const originRowShrunk = (depth: number) =>
+    transition.leaving.has(depth) && transition.entering.size > 0
+      ? collapsed.has(depth)
+      : originShrunk(depth);
   const toggle = (depth: number) =>
     setCollapsed((current) => toggleCollapsed(current, depth));
   const registerOriginEditor =
@@ -491,7 +498,7 @@ export function CodeViewer({
   const paneDepths = [...origins.map((origin) => origin.depth), targetDepth];
   const collapsedIndexes = new Set(
     origins.flatMap((origin, index) =>
-      originShrunk(origin.depth) ? [index] : [],
+      originRowShrunk(origin.depth) ? [index] : [],
     ),
   );
   if (targetCollapsed) collapsedIndexes.add(origins.length);
