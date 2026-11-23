@@ -1,7 +1,7 @@
 {
   "runtime": {
     "package": "web-tree-sitter",
-    "version": "0.27.0",
+    "version": "0.27.2",
     "js": "runtime/web-tree-sitter.js",
     "wasm": "runtime/web-tree-sitter.wasm.gz"
   },
@@ -69,7 +69,7 @@
     },
     "csharp": {
       "package": "tree-sitter-c-sharp",
-      "version": "0.23.5",
+      "version": "0.24.0",
       "wasm": "grammars/csharp.wasm.gz",
       "tags": "queries/csharp.tags.scm",
       "extra": "queries/csharp.extra.scm"
